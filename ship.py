@@ -12,8 +12,7 @@ class AIS():
 class App:
     def __init__(self, dataFolder):
         self.boatsData = BoatsData()  # Initialize BoatsData instance
-        self.nanData = []  # To store rows with NaN values
-        self.dataReadCount = 0
+        self.rowsParsedCount = 0
         #main function when App initialized
         self.populateBoatsData(dataFolder)  # Populate boatsData with data from CSV files
 
@@ -21,7 +20,7 @@ class App:
         return str(self.boatsData)  # String representation of boatsData
     
     def populateBoatsData(self, dataFolder):
-        tic = time.perf_counter()
+        tik = time.perf_counter()
         count=0
         for dirs, _, files in os.walk(dataFolder):
             for f in sorted(files):
@@ -30,17 +29,18 @@ class App:
                     file_path = os.path.join(dirs, f)
                     rows = pd.read_csv(file_path)  # Read CSV file into DataFrame
                     print(f'Starting parsing file: {f}')
-                    self.boatsData.parseRows(rows, self.nanData)  # Parse rows into boatsData
-                    self.dataReadCount += len(rows)
+                    self.boatsData.parseRows(rows)  # Parse rows into boatsData
+                    self.rowsParsedCount += len(rows)
                     print(f'Finished parsing file: {f}')
                 
-        toc = time.perf_counter()
-        print(f"Imported data from {count} files in {toc - tic:0.4f} seconds")
+        tok = time.perf_counter()
+        print(f"Imported data from {count} files in {tok - tik:0.4f} seconds")
 
 class BoatsData:
     def __init__(self):
         self.boatsDataDictionary = {}  # Dictionary to store BoatData instances
         self.previousBoatName = ""
+        self.nanData = []  # To store rows with NaN values
 
     def __str__(self):
         string = ""
@@ -48,16 +48,16 @@ class BoatsData:
             string = string + str(key) + ": " + str(value) + '\n'
         return string
     
-    def parseRows(self, rows, nanData):
+    def parseRows(self, rows):
         """Reads tabular data as rows, sorting them into NaN, and other BoatData Objects.
            The rows are assigned to particular Cruise objects within that Class and stored as such.
         """
         boat_data = None
-        grouped = rows.groupby('name')
+        grouped = rows.groupby('name', dropna = False)
         
         for boatName, group in grouped:
             if pd.isna(boatName):
-                nanData.extend(group.values.tolist()) #########*******
+                self.nanData.extend(group.values.tolist())
                 continue
             
             if boatName not in self.boatsDataDictionary or not boatName:
@@ -72,9 +72,10 @@ class BoatData(AIS):
         super().__init__()
         self.cruisesDataDictionary = {}  # Dictionary to store Cruise instances
         self.boatName = boatName  # Store boat name    
-        self.previousCruiseID = ''
-        self.cruiseID = '' ####
         self.previousBoatName = ''
+        self.cruiseID = '' ####
+        self.previousCruiseID = ''
+
     
     def __str__(self):
         string = ''
@@ -82,22 +83,28 @@ class BoatData(AIS):
             string = string + str(key) + ": " + str(value) + '\n'
         return string
 
+    def orderGroupByTime(self, group):
+        """Orders the input group chronologically (timestamps) and returns the group 
+           in the new order with an object desribing the date for those data.
+        """
+        group['bs_ts'] = pd.to_datetime(group['bs_ts'])
+        group.sort_values(by='bs_ts', inplace=True)
+        return group.reset_index(drop=True)
     
     def processGroup(self, group):
         #print('processing group', group['name'].head)
-        group['bs_ts'] = pd.to_datetime(group['bs_ts'])
-        group.sort_values(by='bs_ts', inplace=True)
-        group = group.reset_index(drop=True)
+        group = self.orderGroupByTime(group)
         #print(group['bs_ts'].head)
         group_date = group['bs_ts'][0].date()
+        
         if self.boatName == self.previousBoatName and (group_date - BoatData.TIME_THRESHOLD) in self.cruisesDataDictionary[self.previousCruiseID].days:
             self.cruiseID = self.previousCruiseID
             # or (abs(max(self.cruisesDataDictionary[self.previousCruiseID].days) - group['bs_ts'].iloc(0).date()) <= BoatData.TIME_THRESHOLD):
             self.cruisesDataDictionary[self.previousCruiseID].addGroup(group)
-            print(f'adding new entries to previous cruise: {self.cruiseID}')
+            #print(f'adding new entries to previous cruise: {self.cruiseID}')
         elif self.boatName != self.previousBoatName:
             if not self.cruisesDataDictionary: #if empty
-                print('No Cruise Object, making instance for:', self.boatName)
+                #print('No Cruise Object, making instance for:', self.boatName)
                 self.cruiseID = self.boatName + '_01'
                 self.cruisesDataDictionary[self.cruiseID] = Cruise(self.cruiseID)
                 self.cruisesDataDictionary[self.cruiseID].addGroup(group)
@@ -113,7 +120,7 @@ class BoatData(AIS):
                         self.cruisesDataDictionary[self.cruiseID].addGroup(group)
                         self.previousCruiseID = self.cruiseID
                         self.previousBoatName = self.boatName
-                        print(f'adding new entries to cruise: {self.cruiseID}')
+                        #print(f'adding new entries to cruise: {self.cruiseID}')
                         break
                         
             else:
@@ -122,14 +129,14 @@ class BoatData(AIS):
                 self.cruisesDataDictionary[self.cruiseID].addGroup(group)
                 self.previousCruiseID = self.cruiseID
                 self.previousBoatName = self.boatName
-                print(f'adding new entries to cruise: {self.cruiseID}')
+                #print(f'adding new entries to cruise: {self.cruiseID}')
         else:
             self.cruiseID = self.boatName + f'_{len(self.cruisesDataDictionary) + 1:02d}'
             self.cruisesDataDictionary[self.cruiseID] = Cruise(self.cruiseID)
             self.cruisesDataDictionary[self.cruiseID].addGroup(group)
             self.previousCruiseID = self.cruiseID
             self.previousBoatName = self.boatName
-            print(f'adding new entries to cruise: {self.cruiseID}')
+            #print(f'adding new entries to cruise: {self.cruiseID}')
             #print(group['name'][0], self.boatName, self.previousBoatName, max(self.cruisesDataDictionary[self.previousCruiseID].days), group_date)
             #print('throw error in process Group (BoatData)')
 
@@ -195,9 +202,12 @@ class Cruise(AIS):
 
 ##### TESTING #####
 
-data_folder = r'/Users/Graham/cruise/data/examples'
+data_folder = r'/Users/Graham/cruise/ais_data'
+test_folder = r'/Users/Graham/cruise/test_data'
 
-a = App(data_folder)
+isTest = False
+
+a = App(test_folder) if isTest else App(data_folder)
 
 sum_of_points = 0
 for boat_name, boat_data in a.boatsData.boatsDataDictionary.items():
@@ -208,4 +218,4 @@ for boat_name, boat_data in a.boatsData.boatsDataDictionary.items():
         print(f"       data points: {len(cruise_data.data)}")
         sum_of_points += len(cruise_data.data)
 
-print(f'Expected point count: {a.dataReadCount}, actual point count: {sum_of_points}, nan point count: {len(a.nanData)}, condition is: {sum_of_points+len(a.nanData) == a.dataReadCount}')
+print(f'Expected point count: {a.rowsParsedCount}, actual point count: {sum_of_points}, nan point count: {len(a.boatsData.nanData)}, condition is: {sum_of_points+len(a.boatsData.nanData) == a.rowsParsedCount}')
