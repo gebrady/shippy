@@ -5,8 +5,8 @@ class App:
     def __init__(self, dataFolder):
         self.boatsData = BoatsData()  # Initialize BoatsData instance
         self.rowsParsedCount = 0
-        #main function when App initialized
         self.populateBoatsData(dataFolder)  # Populate boatsData with data from CSV files
+        self.analyst = Analyst(self.boatsData)
 
     def __str__(self):
         return str(self.boatsData)  # String representation of boatsData
