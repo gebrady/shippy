@@ -1,4 +1,6 @@
 # Main application class
+from ship import *
+
 class App:
     def __init__(self, dataFolder):
         self.boatsData = BoatsData()  # Initialize BoatsData instance

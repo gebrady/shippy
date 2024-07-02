@@ -4,11 +4,7 @@ import secrets
 import time
 
 # Custom class representing AIS functionality
-class AIS(pd.DataFrame):
-
-    @property
-    def _constructor*(self):
-        return AIS
+class AIS():
 
     def __repr__(self):
         return 'AIS: Testing worked'
@@ -64,7 +60,7 @@ class BoatData(AIS):
         #print('processing group', group['name'].head)
         group = self.orderGroupByTime(group)
         #print(group['bs_ts'].head)
-        print(f'this group: {group.name[0]}, last boat: {self.previousBoatName} ')
+        #print(f'this group: {group.name[0]}, last boat: {self.previousBoatName} ')
         # first few lines
         if self.groupMatchesLastCruise(group):
             self.cruisesDataDictionary[self.previousCruiseID].addGroup(group)
