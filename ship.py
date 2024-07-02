@@ -76,7 +76,6 @@ class BoatData(AIS):
         self.cruiseID = '' ####
         self.previousCruiseID = ''
 
-    
     def __str__(self):
         string = ''
         for key, value in self.cruisesDataDictionary.items():
@@ -90,69 +89,80 @@ class BoatData(AIS):
         group['bs_ts'] = pd.to_datetime(group['bs_ts'])
         group.sort_values(by='bs_ts', inplace=True)
         return group.reset_index(drop=True)
+
+    def initializeCruisesDataDictionary(self):
+        """Assigns first cruiseID using boat name, creates an empty cruisesDataDictionary.
+        """
+        self.cruiseID = self.boatName + '_01'
+        self.cruisesDataDictionary[self.cruiseID] = Cruise(self.cruiseID)
+ 
+    def incrementCruisesDataDictionary(self, group):
+        """creates a new entry in cruisesDataDictionary with an incremented cruiseID, updates instance variables.
+        """
+        self.cruiseID = self.boatName + f'_{len(self.cruisesDataDictionary) + 1:02d}'
+        self.cruisesDataDictionary[self.cruiseID] = Cruise(self.cruiseID)
+   
+    def inPreviousCruiseRange(self, group_date):
+        """checks if date of current group meets threshold to belong to previous edited cruise.
+        """
+        (group_date - BoatData.TIME_THRESHOLD) in self.cruisesDataDictionary[self.previousCruiseID].days
     
+    def groupMatchesLastCruise(self, group):
+        """Returns true if current group data belongs to the last processed group. False otherwise.
+        """
+        group_date = group['bs_ts'][0].date()
+        return self.boatName == self.previousBoatName and (group_date - BoatData.TIME_THRESHOLD) in self.cruisesDataDictionary[self.previousCruiseID].days
+
+    def newBoatEncountered(self, group):
+        """Checks if new boat name from previous group, initializes cruisesDataDictionary at
+           new cruiseID if None, and returns False for error
+        """
+        if self.boatName != self.previousBoatName:
+            if not self.cruisesDataDictionary: #if empty
+                #print('No Cruise Object, making instance for:', self.boatName)
+                self.initializeCruisesDataDictionary()
+            return True
+        else: return False
+
+    def sortAndAddGroup(self, group):
+        """Adds data to the initial cruise if this is a new entry
+           sorts the data to a cruise using timestamps, adds after identifying
+           increments into a new cruise for an existing boats and adds.
+        """
+        group_date = group['bs_ts'][0].date()
+        if len(self.cruisesDataDictionary) == 1:
+            self.cruisesDataDictionary[self.cruiseID].addGroup(group)
+        elif len(self.cruisesDataDictionary) > 1:
+            for cruiseID, cruiseData in self.cruisesDataDictionary.items():
+                if any((cruiseData['bs_ts'].dt.date == group_date) or (cruiseData['bs_ts'].dt.date + BoatData.TIME_THRESHOLD == group_date)):
+                    self.cruiseID = cruiseID
+                    self.cruisesDataDictionary[self.cruiseID].addGroup(group)
+                    #print(f'adding new entries to cruise: {self.cruiseID}')
+                    break
+                else: # new cruise found for this boat
+                    print(f'new cruise found for {self.boatName}')
+                    self.incrementCruisesDataDictionary(group)
+                    self.cruisesDataDictionary[self.cruiseID].addGroup(group)
+        else:
+            print('error in sortAndAddGroup')
+
     def processGroup(self, group):
         #print('processing group', group['name'].head)
         group = self.orderGroupByTime(group)
         #print(group['bs_ts'].head)
-        group_date = group['bs_ts'][0].date()
-        
-        if self.boatName == self.previousBoatName and (group_date - BoatData.TIME_THRESHOLD) in self.cruisesDataDictionary[self.previousCruiseID].days:
-            self.cruiseID = self.previousCruiseID
-            # or (abs(max(self.cruisesDataDictionary[self.previousCruiseID].days) - group['bs_ts'].iloc(0).date()) <= BoatData.TIME_THRESHOLD):
+        print(f'this group: {group.name[0]}, last boat: {self.previousBoatName} ')
+        # first few lines
+        if self.groupMatchesLastCruise(group):
             self.cruisesDataDictionary[self.previousCruiseID].addGroup(group)
-            #print(f'adding new entries to previous cruise: {self.cruiseID}')
-        elif self.boatName != self.previousBoatName:
-            if not self.cruisesDataDictionary: #if empty
-                #print('No Cruise Object, making instance for:', self.boatName)
-                self.cruiseID = self.boatName + '_01'
-                self.cruisesDataDictionary[self.cruiseID] = Cruise(self.cruiseID)
-                self.cruisesDataDictionary[self.cruiseID].addGroup(group)
-                self.previousCruiseID = self.cruiseID
-                self.previousBoatName = self.boatName
-            elif len(self.cruisesDataDictionary) >= 1:
-                for cruiseID, cruiseData in self.cruisesDataDictionary.items():
-                    # temp = cruiseData
-                    # dateRange = temp['bs_ts'].dt.date  # Extract date from 'bs_ts' column
-                    # Check if the row's date is within the date range of this DataFrame
-                    if any((cruiseData['bs_ts'].dt.date == group_date) or (cruiseData['bs_ts'].dt.date + BoatData.TIME_THRESHOLD == group_date)):
-                        self.cruiseID = cruiseID
-                        self.cruisesDataDictionary[self.cruiseID].addGroup(group)
-                        self.previousCruiseID = self.cruiseID
-                        self.previousBoatName = self.boatName
-                        #print(f'adding new entries to cruise: {self.cruiseID}')
-                        break
-                        
-            else:
-                self.cruiseID = self.boatName + f'_{len(self.cruisesDataDictionary) + 1:02d}'
-                self.cruisesDataDictionary[self.cruiseID] = Cruise(self.cruiseID)
-                self.cruisesDataDictionary[self.cruiseID].addGroup(group)
-                self.previousCruiseID = self.cruiseID
-                self.previousBoatName = self.boatName
-                #print(f'adding new entries to cruise: {self.cruiseID}')
+        elif self.newBoatEncountered(group):
+            self.sortAndAddGroup(group)
         else:
-            self.cruiseID = self.boatName + f'_{len(self.cruisesDataDictionary) + 1:02d}'
-            self.cruisesDataDictionary[self.cruiseID] = Cruise(self.cruiseID)
+            print(f'new cruise found for {self.boatName}')
+            self.incrementCruisesDataDictionary(group)
             self.cruisesDataDictionary[self.cruiseID].addGroup(group)
-            self.previousCruiseID = self.cruiseID
-            self.previousBoatName = self.boatName
-            #print(f'adding new entries to cruise: {self.cruiseID}')
-            #print(group['name'][0], self.boatName, self.previousBoatName, max(self.cruisesDataDictionary[self.previousCruiseID].days), group_date)
-            #print('throw error in process Group (BoatData)')
-
-
-    def sortRowToCruise(self, row):
-        ts = row['bs_ts']
-
-        for cruiseID, cruise in self.cruisesDataDictionary.items():
-            if (min(cruise.time_records) - BoatData.TIME_THRESHOLD) <= ts <= (max(cruise.time_records) + BoatData.TIME_THRESHOLD):
-                cruise.addNewRow(row)
-                return
         
-        new_cruise_id = self.boatName + '_' + f'{len(self.cruisesDataDictionary) + 1:02d}'
-        print(f'Adding new cruise: {new_cruise_id}')
-        self.cruisesDataDictionary[new_cruise_id] = Cruise(new_cruise_id)
-        self.cruisesDataDictionary[new_cruise_id].addNewRow(row)
+        self.previousCruiseID = self.cruiseID
+        self.previousBoatName = self.boatName
 
     def getOtherCruises(self, cruiseName):
         if cruiseName in self.cruisesDataDictionary:
