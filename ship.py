@@ -82,6 +82,24 @@ class BoatData(AIS):
             string = string + str(key) + ": " + str(value) + '\n'
         return string
 
+    def processGroup(self, group):
+        #print('processing group', group['name'].head)
+        group = self.orderGroupByTime(group)
+        #print(group['bs_ts'].head)
+        print(f'this group: {group.name[0]}, last boat: {self.previousBoatName} ')
+        # first few lines
+        if self.groupMatchesLastCruise(group):
+            self.cruisesDataDictionary[self.previousCruiseID].addGroup(group)
+        elif self.newBoatEncountered(group):
+            self.sortAndAddGroup(group)
+        else:
+            print(f'new cruise found for {self.boatName}')
+            self.incrementCruisesDataDictionary(group)
+            self.cruisesDataDictionary[self.cruiseID].addGroup(group)
+        
+        self.previousCruiseID = self.cruiseID
+        self.previousBoatName = self.boatName
+
     def orderGroupByTime(self, group):
         """Orders the input group chronologically (timestamps) and returns the group 
            in the new order with an object desribing the date for those data.
@@ -145,24 +163,6 @@ class BoatData(AIS):
                     self.cruisesDataDictionary[self.cruiseID].addGroup(group)
         else:
             print('error in sortAndAddGroup')
-
-    def processGroup(self, group):
-        #print('processing group', group['name'].head)
-        group = self.orderGroupByTime(group)
-        #print(group['bs_ts'].head)
-        print(f'this group: {group.name[0]}, last boat: {self.previousBoatName} ')
-        # first few lines
-        if self.groupMatchesLastCruise(group):
-            self.cruisesDataDictionary[self.previousCruiseID].addGroup(group)
-        elif self.newBoatEncountered(group):
-            self.sortAndAddGroup(group)
-        else:
-            print(f'new cruise found for {self.boatName}')
-            self.incrementCruisesDataDictionary(group)
-            self.cruisesDataDictionary[self.cruiseID].addGroup(group)
-        
-        self.previousCruiseID = self.cruiseID
-        self.previousBoatName = self.boatName
 
     def getOtherCruises(self, cruiseName):
         if cruiseName in self.cruisesDataDictionary:
