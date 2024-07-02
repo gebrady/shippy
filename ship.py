@@ -4,39 +4,17 @@ import secrets
 import time
 
 # Custom class representing AIS functionality
-class AIS():
+class AIS(pd.DataFrame):
+
+    @property
+    def _constructor*(self):
+        return AIS
+
     def __repr__(self):
         return 'AIS: Testing worked'
 
-# Main application class
-class App:
-    def __init__(self, dataFolder):
-        self.boatsData = BoatsData()  # Initialize BoatsData instance
-        self.rowsParsedCount = 0
-        #main function when App initialized
-        self.populateBoatsData(dataFolder)  # Populate boatsData with data from CSV files
-
-    def __str__(self):
-        return str(self.boatsData)  # String representation of boatsData
-    
-    def populateBoatsData(self, dataFolder):
-        tik = time.perf_counter()
-        count=0
-        for dirs, _, files in os.walk(dataFolder):
-            for f in sorted(files):
-                if f.endswith('csv'):
-                    count+=1
-                    file_path = os.path.join(dirs, f)
-                    rows = pd.read_csv(file_path)  # Read CSV file into DataFrame
-                    print(f'Starting parsing file: {f}')
-                    self.boatsData.parseRows(rows)  # Parse rows into boatsData
-                    self.rowsParsedCount += len(rows)
-                    print(f'Finished parsing file: {f}')
-                
-        tok = time.perf_counter()
-        print(f"Imported data from {count} files in {tok - tik:0.4f} seconds")
-
 class BoatsData:
+
     def __init__(self):
         self.boatsDataDictionary = {}  # Dictionary to store BoatData instances
         self.previousBoatName = ""
@@ -81,7 +59,7 @@ class BoatData(AIS):
         for key, value in self.cruisesDataDictionary.items():
             string = string + str(key) + ": " + str(value) + '\n'
         return string
-
+    
     def processGroup(self, group):
         #print('processing group', group['name'].head)
         group = self.orderGroupByTime(group)
@@ -99,6 +77,8 @@ class BoatData(AIS):
         
         self.previousCruiseID = self.cruiseID
         self.previousBoatName = self.boatName
+
+    ####### HELPER FUNCTIONS #######
 
     def orderGroupByTime(self, group):
         """Orders the input group chronologically (timestamps) and returns the group 
@@ -187,6 +167,15 @@ class Cruise(AIS):
     def __str__(self):
         return self.data.to_string()
     
+    def addGroup(self, group):
+        """Adds a full group pd DataFrame object to the Cruise instance 
+           on which the method is called
+        """
+        self.data = pd.concat([self.data, group], ignore_index=True)
+        self.days.append(group['bs_ts'][0].date())
+    
+    ####### HELPER FUNCTIONS #######
+
     def getOtherCruises(self):
         if self.boatData is None:
             return []
@@ -195,37 +184,5 @@ class Cruise(AIS):
         else:
             return []
 
-    def addGroup(self, group):
-        """Adds a full group pd DataFrame object to the Cruise instance 
-           on which the method is called
-        """
-        self.data = pd.concat([self.data, group], ignore_index=True)
-        self.days.append(group['bs_ts'][0].date())
-        
-        #print('group added, appended to self.days:', self.days)
-    
-    def addNewRow(self, row):
-        "dep"
-        new_row = pd.DataFrame({'lat': [row['lat']], 'lon': [row['lon']], 'time': [row['bs_ts']]})
-        self.data = pd.concat([self.data, new_row], ignore_index=True)
-        self.time_records.append(pd.to_datetime(row['bs_ts']))
 
-##### TESTING #####
 
-data_folder = r'/Users/Graham/cruise/ais_data'
-test_folder = r'/Users/Graham/cruise/test_data'
-
-isTest = False
-
-a = App(test_folder) if isTest else App(data_folder)
-
-sum_of_points = 0
-for boat_name, boat_data in a.boatsData.boatsDataDictionary.items():
-    print(f"Boat: {boat_name}")
-    for cruise_id, cruise_data in boat_data.cruisesDataDictionary.items():
-        print(f"  Cruise ID: {cruise_id}")
-        print(f"    {min(cruise_data.days).strftime('%Y/%m/%d')} - {max(cruise_data.days).strftime('%Y/%m/%d')}")
-        print(f"       data points: {len(cruise_data.data)}")
-        sum_of_points += len(cruise_data.data)
-
-print(f'Expected point count: {a.rowsParsedCount}, actual point count: {sum_of_points}, nan point count: {len(a.boatsData.nanData)}, condition is: {sum_of_points+len(a.boatsData.nanData) == a.rowsParsedCount}')
