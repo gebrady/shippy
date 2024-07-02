@@ -1,5 +1,6 @@
 # Main application class
 from ship import *
+from analyst import *
 
 class App:
     def __init__(self, dataFolder):
@@ -28,6 +29,10 @@ class App:
         tok = time.perf_counter()
         print(f"Imported data from {count} files in {tok - tik:0.4f} seconds")
 
+    def run_analysis(self):
+        self.analysis.plot_data()
+        self.analysis.load_data_to_qgis(r'/Users/Graham/cruise/shapes')
+
 
 ##### TESTING #####
 
@@ -48,3 +53,6 @@ for boat_name, boat_data in a.boatsData.boatsDataDictionary.items():
         sum_of_points += len(cruise_data.data)
 
 print(f'Expected point count: {a.rowsParsedCount}, actual point count: {sum_of_points}, nan point count: {len(a.boatsData.nanData)}, condition is: {sum_of_points+len(a.boatsData.nanData) == a.rowsParsedCount}')
+
+#a.run_analysis()
+
