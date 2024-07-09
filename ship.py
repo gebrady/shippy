@@ -2,6 +2,11 @@ import pandas as pd
 import os
 import secrets
 import time
+import matplotlib.pyplot as plt
+
+import geopandas as gpd
+from geopy.distance import distance
+from shapely.geometry import Point, LineString
 
 # Custom class representing AIS functionality
 class AIS():
@@ -30,6 +35,7 @@ class BoatsData:
         grouped = rows.groupby('name', dropna = False)
         
         for boatName, group in grouped:
+            group = group.sort_values(by='bs_ts', ascending=True)
             if pd.isna(boatName):
                 self.nanData.extend(group.values.tolist())
                 continue
@@ -41,6 +47,7 @@ class BoatsData:
 
 class BoatData(AIS):
     TIME_THRESHOLD = pd.Timedelta(days=1) #if entry appears on next day, belongs to same cruise
+    GLBA_BOUNDARY = gpd.read_file(r'./shapes/nps_boundary_glba.shp')
 
     def __init__(self, boatName):
         super().__init__()
@@ -159,6 +166,10 @@ class Cruise(AIS):
         self.cruiseID = cruiseID
         self.days = []
         self.time_records = []
+        self.gdf = None # initialize empty geodataframe
+        self.thinned = None
+        self.portsOfCall = None
+        self.gdf_clipped = None
     
     def __str__(self):
         return self.data.to_string()
@@ -170,6 +181,132 @@ class Cruise(AIS):
         self.data = pd.concat([self.data, group], ignore_index=True)
         self.days.append(group['bs_ts'][0].date())
     
+    def clipBoundary(self, boundary):
+        """writes shapefile of cruiseData, using the boundary polygon to subset the geodataframe
+        """
+        if not self.gdf_clipped:
+            geometry = [Point(xy) for xy in zip(self.data['lon'], self.data['lat'])]
+            # Convert DataFrame to GeoDataFrame
+            gdf = gpd.GeoDataFrame(self.data, geometry=geometry)
+            # Set CRS to WGS 84 (EPSG:4326)
+            gdf.set_crs(epsg=4326, inplace=True)
+            # Subset the GeoDataFrame by the boundary
+            gdf_sub = gdf[gdf.geometry.within(boundary.geometry.unary_union)]
+            self.gdf_clipped = gdf_sub
+        else:
+            print('error in clipboundary')
+
+    def toPointShapefile(self, filepath):
+        """Converts a Cruise object to a shapefile and writes it to filepath.
+           filepath takes .shp extension
+        """
+        # Create geometry column from latitude and longitude columns
+        geometry = [Point(xy) for xy in zip(self.data['lon'], self.data['lat'])]
+        # Convert DataFrame to GeoDataFrame
+        #print(cruiseData.data)
+        gdf = gpd.GeoDataFrame(self.data, geometry=geometry)
+        #print(gdf)
+        # Set CRS to WGS 84 (EPSG:4326)
+        gdf.set_crs(epsg=4326, inplace=True)
+        gdf.to_file(os.path.join(os.getcwd(), filepath))
+        self.gdf = gdf
+
+    def thinCruiseData(self):
+        if not self.thinned:
+            self.thinned = self.data.iloc[::100]
+        
+        #Thins the data to every 
+
+    ##### BOOLEAN METHODS #####
+
+    def visitsGlacierBay(self):
+        """returns true if the cruise enters the park boundary of GLBA. else false
+        """
+        if visitsGLBA:
+            return True
+        else: 
+            return False
+
+
+
+
+    ##### VISUALIZATION FUNCITONS #####
+
+    def plotCruise(self):
+        """Plots speed-time graph for the cruise object, could be paired with a map at some point.
+        """
+        if self.data is not None:
+            plt.figure(figsize=(10, 6))
+            plt.plot(self.data['bs_ts'], self.data['sog'], linestyle='-')
+            plt.xlabel('Timestamp')
+            plt.ylabel('Speed over ground')
+            plt.title(f'Velocity Over Time: {self.cruiseID}')
+            plt.grid(True)
+            plt.xticks(rotation=45)
+            plt.tight_layout()
+            plt.show()
+        else:
+            print('error: no data in plotCruise()')
+    
+#port of call of glacier bay and then next port
+#we know when they were in glba due to glba concessions people
+# test run our code, output to excel which boats were in glba on which days
+# run tests, make sure its accurate, apply it to db 
+
+###if it enteres the geofence of the port, assign it as a port. 
+
+
+#make a plot of the ships activities over its cruise, with speed and time to visualize ports
+
+
+
+    def getPortsOfCall(self):
+        """Retrieves the ports of call for the cruise instance in order of appearance and sets it to an object variable.
+        """
+        if not self.portsOfCall:
+            # Initialize an empty list and a variable to track the last seen value
+            orderedUniquePorts = []
+            previousPort = None
+
+            # Iterate through the column and append unique values when a change occurs
+            for port in self.data['destination']:
+                if port != previousPort:
+                    orderedUniquePorts.append(port)
+                    previousPort = port
+
+            self.portsOfCall = orderedUniquePorts
+            #return self.portsOfCall
+        else:
+            print('error in get ports of call')
+
+    def getNextPorts(self, timestamp):
+        """Returns tuple of current and next destinations.
+        """
+        if timestamp > max(self.data['bs_ts']) or timestamp < min(self.data['bs_ts']):
+            print('error in timestamp: out of range')
+            pass
+        else:
+            timestamp = pd.Timestamp(timestamp)
+            #start_index = self.data.index[self.data['bs_ts'] == timestamp][0]
+            start_index = self.data['bs_ts'].get_loc(timestamp, method='nearest')
+            
+            portsOfCall = set()
+            currentDestination = self.data.loc[start_index, 'destination']
+            portsOfCall.add(currentDestination)
+
+            for idx in range(start_index + 1, len(self.data)):
+                value = df.loc[idx, 'data_column']
+                if value not in portsOfCall:
+                    portsOfCall.add(value)
+                    # Do analysis on the unique value found
+                    print(f"Unique value found: {value} at index {idx}")
+                    break
+                print('no other destination found')
+                portsOfCall.add('Nan')
+
+            return portsOfCall
+        
+        
     ####### HELPER FUNCTIONS #######
 
     def getOtherCruises(self):

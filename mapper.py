@@ -28,7 +28,10 @@ folium.GeoJson(glba).add_to(m)
 ########## HELPER FUNCTIONS #######
 
 # Function to convert a DataFrame to a GeoDataFrame
-def cruiseData_to_cruiseGeoData(cruiseID, cruiseData, lat_col, lon_col):
+
+def cruiseDataToGeodataframe(cruiseID, cruiseData, lat_col, lon_col):
+    """Converts a cruiseData object to a point geodataframe and returns geodataframe to be saved as a shapefile.
+    """
     # Create geometry column from latitude and longitude columns
     geometry = [Point(xy) for xy in zip(cruiseData.data[lon_col], cruiseData.data[lat_col])]
     # Convert DataFrame to GeoDataFrame
@@ -64,7 +67,7 @@ gdfs_line = []
 
 for boat_name, boat_data in a.boatsData.boatsDataDictionary.items():
             for cruise_id, cruise_data in boat_data.cruisesDataDictionary.items():
-                cruiseGeoData = cruiseData_to_cruiseGeoData(cruise_id, cruise_data, 'lat', 'lon')
+                cruiseGeoData = cruiseDataToGeodataframe(cruise_id, cruise_data, 'lat', 'lon')
                 cruiseLine = cruiseDataToPolyline(cruise_data)
                 gdfs.append(cruiseGeoData)
                 gdfs_line.append(cruiseLine)
