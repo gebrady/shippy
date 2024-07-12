@@ -3,10 +3,13 @@ import os
 import secrets
 import time
 import matplotlib.pyplot as plt
+from datetime import datetime
 
 import geopandas as gpd
 from geopy.distance import distance
 from shapely.geometry import Point, LineString
+
+from shapely.ops import nearest_points
 
 # Custom class representing AIS functionality
 class AIS():
@@ -160,6 +163,44 @@ class BoatData(AIS):
             return None
 
 class Cruise(AIS):
+    CRUISE_DOCKS_OG = {'Skagway' : (59.44932, -135.323998),
+                    'Juneau' : (58.29350, -134.40080)}
+
+    CRUISE_DOCKS = {
+        'Juneau': {'name': 'Juneau Cruise Ship Terminal', 'coordinates': (-134.4197, 58.3019)},
+        'Ketchikan': {'name': 'Ketchikan Cruise Ship Dock', 'coordinates': (-131.6461, 55.3422)},
+        'Skagway': {'name': 'Skagway Cruise Ship Dock', 'coordinates': (-135.3300, 59.4500)},
+        'Seward': {'name': 'Seward Cruise Ship Terminal', 'coordinates': (-149.4330, 60.1244)},
+        'Sitka': {'name': 'Sitka Sound Cruise Terminal', 'coordinates': (-135.3381, 57.0516)},
+        'Haines': {'name': 'Haines Cruise Ship Dock', 'coordinates': (-135.4456, 59.2358)},
+        'Whittier': {'name': 'Whittier Cruise Ship Terminal', 'coordinates': (-148.6836, 60.7722)},
+        'Anchorage': {'name': 'Port of Anchorage', 'coordinates': (-149.9003, 61.2181)},
+        'Icy Strait Point': {'name': 'Icy Strait Point Cruise Dock', 'coordinates': (-135.4460, 58.1378)},
+        'Valdez': {'name': 'Valdez Cruise Ship Terminal', 'coordinates': (-146.3483, 61.1246)},
+        'Kodiak': {'name': 'Kodiak Cruise Ship Dock', 'coordinates': (-152.4072, 57.7900)},
+        'Petersburg': {'name': 'Petersburg Cruise Dock', 'coordinates': (-132.9556, 56.8125)},
+        'Wrangell': {'name': 'Wrangell Cruise Dock', 'coordinates': (-132.3801, 56.4708)},
+        'Hubbard Glacier': {'name': 'Hubbard Glacier Cruise Area', 'coordinates': (-139.4938, 60.0200)},
+        'Prince Rupert': {'name': 'Prince Rupert Cruise Terminal', 'coordinates': (-130.3200, 54.3150)},
+        'Yakutat Bay': {'name': 'Yakutat Bay Cruise Area', 'coordinates': (-139.7274, 59.5475)},
+        'Dutch Harbor': {'name': 'Dutch Harbor Cruise Ship Dock', 'coordinates': (-166.5429, 53.8898)},
+        'Hoonah': {'name': 'Hoonah Cruise Ship Dock', 'coordinates': (-135.4436, 58.1139)},
+        'Homer': {'name': 'Homer Cruise Ship Dock', 'coordinates': (-151.5483, 59.6425)},
+        'Kenai': {'name': 'Kenai Cruise Ship Dock', 'coordinates': (-151.2583, 60.5544)},
+        'Glacier Bay': {'name': 'Glacier Bay Cruise Area', 'coordinates': (-136.9002, 58.6658)},
+        'College Fjord': {'name': 'College Fjord Cruise Area', 'coordinates': (-147.8333, 61.2106)},
+        'Cordova': {'name': 'Cordova Cruise Ship Dock', 'coordinates': (-145.7575, 60.5428)},
+        'Nome': {'name': 'Nome Cruise Ship Dock', 'coordinates': (-165.4064, 64.5011)},
+        'Unalaska': {'name': 'Unalaska Cruise Ship Dock', 'coordinates': (-166.5319, 53.8697)},
+        'Saint Paul Island': {'name': 'Saint Paul Island Cruise Dock', 'coordinates': (-170.2767, 57.1253)},
+        'Barrow': {'name': 'Barrow Cruise Ship Dock', 'coordinates': (-156.7886, 71.2906)},
+        'Klawock': {'name': 'Klawock Cruise Ship Dock', 'coordinates': (-133.0958, 55.5525)},
+        'Thorne Bay': {'name': 'Thorne Bay Cruise Dock', 'coordinates': (-132.5222, 55.6886)},
+        'Elfin Cove': {'name': 'Elfin Cove Cruise Dock', 'coordinates': (-136.3436, 58.1942)}
+    }
+
+    DOCK_BUFFERS = gpd.read_file(r'./buffers/docks_albers_2000m_buffer.shp')
+
     def __init__(self, cruiseID):
         super().__init__()
         self.data = pd.DataFrame(columns=['lat', 'lon', 'time'])
@@ -169,7 +210,9 @@ class Cruise(AIS):
         self.gdf = None # initialize empty geodataframe
         self.thinned = None
         self.portsOfCall = None
+        self.timestamps_of_interest = None
         self.gdf_clipped = None
+        self.daily_itinerary = None
     
     def __str__(self):
         return self.data.to_string()
@@ -195,7 +238,7 @@ class Cruise(AIS):
             self.gdf_clipped = gdf_sub
         else:
             print('error in clipboundary')
-
+        
     def toPointShapefile(self, filepath):
         """Converts a Cruise object to a shapefile and writes it to filepath.
            filepath takes .shp extension
@@ -217,18 +260,72 @@ class Cruise(AIS):
         
         #Thins the data to every 
 
+    def dataToGeodata(self):
+        """Converts a populated self.data to a geodataframe and stores it as self.gdf
+        """
+        if self.gdf is None:
+            geometry = [Point(xy) for xy in zip(self.data['lon'], self.data['lat'])]
+            #points_gdf = gpd.GeoDataFrame(data, geometry=gpd.points_from_xy(data['longitude'], data['latitude'])) 
+            # ^^ another way to do it
+            gdf = gpd.GeoDataFrame(self.data, geometry=geometry)
+            gdf.set_crs(epsg=4326, inplace=True)
+            self.gdf = gdf
+        else:
+            pass
+
     ##### BOOLEAN METHODS #####
 
     def visitsGlacierBay(self):
         """returns true if the cruise enters the park boundary of GLBA. else false
         """
-        if visitsGLBA:
+        self.dataToGeodata() # populates self.gdf if needed
+        if any(self.gdf.intersects(BoatData.GLBA_BOUNDARY.unary_union)):
             return True
-        else: 
+        else:
             return False
 
 
 
+    ##### PORT OF CALL ANALYSIS #####
+
+    def listPorts(self):
+        """returns a list of the ports of call visited by the cruise during its itinerary
+        """
+        if self.gdf is None:
+            self.dataToGeodata()
+        if self.portsOfCall is None:
+            self.portsOfCall = {}
+            self.timestamps_of_interest = []
+            search_area = Cruise.DOCK_BUFFERS
+            search_area = search_area.to_crs(4326)
+            #print(search_area)
+            #search_radius = .1125  # ~ 2 mile radius in degrees
+            # Collect the names of features in the buffer layer that intersect with any of the buffers from the points layer
+            for _, buffer in search_area.iterrows():
+                buffer_geom = buffer['geometry']  # Buffer geometry
+                # Check if any point intersects with this buffer
+                intersecting_indices = self.gdf[self.gdf.geometry.intersects(buffer_geom)].index
+
+                if len(intersecting_indices) > 0:
+                    #print('match found for', buffer['name'])
+                    dock_name = buffer['name']
+                    #print(f'Match found for {dock_name}')
+                    #self.portsOfCall.append(dock_name)
+                    
+                    # Retrieve the timestamps of the intersecting points
+                    timestamps = self.gdf.loc[intersecting_indices, 'bs_ts'].tolist()
+                    #print(timestamps)
+                    timestamps_formatted = format_timestamp_range2(timestamps)
+                    self.portsOfCall[dock_name] = (timestamps_formatted, timestamps)
+                else:
+                    pass
+            s = ''
+            for key, value in self.portsOfCall.items():
+                s += f'{key}: {value[0]} \n'
+            return s
+        else:
+            print('self.portsOfCall has been assigned error in listPorts')
+            return None
 
     ##### VISUALIZATION FUNCITONS #####
 
@@ -253,12 +350,68 @@ class Cruise(AIS):
 # test run our code, output to excel which boats were in glba on which days
 # run tests, make sure its accurate, apply it to db 
 
+    ##### ITINERARY FUNCTIONS #####
+    def populatePortsColumn(self):
+        """Adds a column that specifies the location as either within a port or at sea
+           port location is determined by containmenet of an AIS point within a 2km circular buffer around ports of interest.
+        """
+        if self.portsOfCall is not None:
+            search_area = Cruise.DOCK_BUFFERS
+            search_area = search_area.to_crs(4326)
+            self.gdf['port'] = 'at sea'
+            for _, buffer in search_area.iterrows():
+                # Check if any point intersects with this buffer
+                intersecting_indices = self.gdf[self.gdf.geometry.intersects(buffer.geometry)].index
+                if len(intersecting_indices) > 0:
+                    self.gdf.loc[intersecting_indices, 'port'] = buffer['name']
+                    #print('populating column for', buffer['name'])
+                else:
+                    pass
+
+        else:
+            self.listPorts()
+            self.populatePortsColumn()
+
+
+
+    # Define the start and end dates
+    def getItinerary(self):
+        if self.portsOfCall is not None:
+            start_date = min(self.days)
+            end_date = max(self.days)
+
+            # Create a date range from the start to end date
+            date_range = pd.date_range(start=start_date, end=end_date)
+
+            # Prepare a dictionary to hold the itinerary
+            self.daily_itinerary = {}
+            print(date_range)
+            # Populate the itinerary
+            for date in date_range:
+                date_str = date.strftime('%m/%d')
+                daily_ports = []
+                for port, dates in self.portsOfCall.items():
+                    formatted_dates = [d.strftime('%m/%d') for d in dates]
+                    if date_str in formatted_dates:
+                        daily_ports.append(port)
+
+                #daily_ports = [port for port, dates[1] in self.portsOfCall.items() if date_str in [d.strftime('%m/%d') for d in dates]]
+                daily_itinerary[date.strftime('%Y-%m-%d')] = daily_ports
+
+            # Print the daily itinerary
+            # for date, ports in daily_itinerary.items():
+            #     print(f"{date}: {', '.join(ports) if ports else 'At Sea'}")
+            return self.daily_itinerary
+        else:
+            self.listPorts()
+            self.getItinerary()
+
+        
+
 ###if it enteres the geofence of the port, assign it as a port. 
 
 
 #make a plot of the ships activities over its cruise, with speed and time to visualize ports
-
-
 
     def getPortsOfCall(self):
         """Retrieves the ports of call for the cruise instance in order of appearance and sets it to an object variable.
@@ -306,7 +459,6 @@ class Cruise(AIS):
 
             return portsOfCall
         
-        
     ####### HELPER FUNCTIONS #######
 
     def getOtherCruises(self):
@@ -317,5 +469,41 @@ class Cruise(AIS):
         else:
             return []
 
+    def format_timestamp(timestamp_str):
+        """Convert a timestamp string to a formatted string with month, day, and 24-hour time."""
+        # Parse the timestamp string into a datetime object
+        timestamp = datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S')
+        
+        # Format the datetime object to 'Month Day, HH:MM' format
+        formatted_str = timestamp.strftime('%b %d, %H:%M')
+        
+        return formatted_str
 
 
+##### FORMATTING METHODS #####
+
+def format_timestamp_range(timestamp_list):
+    """Converts a list of timestamps to a string describing its range."""
+    # Find the minimum and maximum timestamps
+    lo = min(timestamp_list)
+    hi = max(timestamp_list)
+    
+    # Format the datetime objects to 'MM/DD HHMM' format
+    lo_str = lo.strftime('%-m/%-d %H:%M')
+    hi_str = hi.strftime('%-m/%-d %H:%M')
+    
+    # Create the final formatted string
+    formatted_str = f'{lo_str} - {hi_str}'
+    
+    return formatted_str
+
+def format_timestamp_range2(timestamps):
+    # Extract the dates from the timestamps
+    dates = [ts.date() for ts in timestamps]
+    # Get the unique dates
+    unique_dates = list(set(dates))
+    # Sort the unique dates
+    unique_dates.sort()
+    # Format the dates to month/day
+    formatted_dates = [date.strftime('%m/%d') for date in unique_dates]
+    return formatted_dates
