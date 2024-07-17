@@ -16,7 +16,7 @@ glba_boundary = r'/Users/Graham/cruise/shapes/GLBA_Exit.shp'
 
 boundary = gpd.read_file(glba_boundary)
 
-### CALCULATE PORTS OF CALL
+# ## CALCULATE PORTS OF CALL
 # for boat_name, boat_data in a.boatsData.boatsDataDictionary.items():
 #     glba_visit = 0
 #     for cruise_id, cruise_data in boat_data.cruisesDataDictionary.items():
@@ -38,7 +38,7 @@ boundary = gpd.read_file(glba_boundary)
         
 
 
-### READOUT
+## READOUT
 for boat_name, boat_data in a.boatsData.boatsDataDictionary.items():
     print(f"Boat: {boat_name}")
     for cruise_id, cruise_data in boat_data.cruisesDataDictionary.items():
@@ -47,6 +47,7 @@ for boat_name, boat_data in a.boatsData.boatsDataDictionary.items():
         print(f"       data points: {len(cruise_data.data)}")
         print(f"       ports of call: {cruise_data.listPorts()}")
         cruise_data.populatePortsColumn()
-        print(cruise_data.gdf.port.value_counts())
+        print(f"       {cruise_data.displayItinerary()}")
+        #print(cruise_data.gdf.port.value_counts())
         print()
         #print(f"       ports of call: {cruise_data.getItinerary()}")
