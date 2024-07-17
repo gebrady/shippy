@@ -123,6 +123,11 @@ venv.bak/
 
 # Custom
 /ignored_data
+/cruises_shp
+/buffers
+/cruiseGeodata
+/clipped_cruises
+
 
 # macOS
 .DS_Store
@@ -131,3 +136,4 @@ venv.bak/
 Thumbs.db
 ehthumbs.db
 
+velocity_raster.tif
