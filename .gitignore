@@ -137,3 +137,9 @@ Thumbs.db
 ehthumbs.db
 
 velocity_raster.tif
+cruise_rasters
+maps
+old
+out_shp
+*.geojson
+*.dbf

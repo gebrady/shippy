@@ -205,6 +205,7 @@ class Cruise(AIS):
         super().__init__()
         self.data = pd.DataFrame(columns=['lat', 'lon', 'time'])
         self.cruiseID = cruiseID
+        self.boatName = None
         self.days = []
         self.time_records = []
         self.gdf = None # geodataframe version of cruiseData
@@ -212,9 +213,10 @@ class Cruise(AIS):
         self.portsOfCall = None # List of ports visited and on which days
         self.timestamps_of_interest = None # timestamps of points logged within dock bufffers
         self.gdf_clipped = None # 
-    
+        self.portAfterGLBA = None
         self.daily_itinerary = None # Dictionary or List of ports visited or itinerary IDs (enteres GLBA, AtSea, etc.)
-    
+        self.sub = None
+
     def __str__(self):
         return self.data.to_string()
 
@@ -227,6 +229,13 @@ class Cruise(AIS):
         self.data = pd.concat([self.data, group], ignore_index=True)
         self.days.append(group['bs_ts'][0].date())
     
+    def addCruiseToShapfile(self, shapefile):
+        """adds a cruise's geodataframe to a feature in an ESRI shapefile. This generally would come after the cropping and conversion from point to line data
+        """
+        self.dataToGeodata()
+        self.assignPorts()
+        port = self.getPortAfterGlacierBay()
+
     ##### GEOSPATIAL METHODS #####
 
     def dataToGeodata(self): # Convert self.data to a geodataframe
@@ -253,6 +262,11 @@ class Cruise(AIS):
             distances.append(geodesic((point1.y, point1.x), (point2.y, point2.x)).meters)
         return distances, round(sum(distances)/1000,2)
 
+    def getTimelapseAlongPath(self, start_index, end_index):
+        time1 = self.gdf.bs_ts.iloc[start_index]
+        time2 = self.gdf.bs_ts.iloc[end_index]
+        return (time2-time1).seconds/3600 # time in hours
+
     def clipBoundary(self, boundary):
         """writes shapefile of cruiseData, using the boundary polygon to subset the geodataframe
         """
@@ -268,7 +282,7 @@ class Cruise(AIS):
         else:
             print('error in clipboundary')
 
-    def toPointShapefile(self, filepath):
+    def toPointShapefile_og(self, filepath):
         """Converts a Cruise object to a shapefile and writes it to filepath.
            filepath takes .shp extension
         """
@@ -282,6 +296,173 @@ class Cruise(AIS):
         gdf.set_crs(epsg=4326, inplace=True)
         gdf.to_file(os.path.join(os.getcwd(), filepath))
         self.gdf = gdf
+    
+    def toLineShapefile(self, filepath, start_index, end_index):
+        print(self.gdf)
+        if start_index and end_index:
+            line = LineString(self.gdf.loc[start_index:end_index].geometry.values)
+            distance = self.getDistanceAlongPath(start_index, end_index)[1]
+            time = self.getTimelapseAlongPath(start_index, end_index)
+
+        else: 
+            line = LineString(self.gdf.geometry.values)
+            distance = self.getDistanceAlongPath(self.gdf.index[0], self.gdf.index[-1])[1]
+            time = self.getTimelapseAlongPath(self.gdf.index[0], self.gdf.index[-1])
+
+        new_row = {
+            'cruiseID': self.cruiseID,
+            'boatName': self.boatName,
+            'startDate': str(min(self.days)),
+            'endDate': str(max(self.days)),
+            'departGLBA': str(self.getLastTimestampInGlacierBay()),
+            'afterGLBA': self.getPortAfterGlacierBay(),
+            'distance' : distance,
+            'time' : time
+        }
+        # Create a new GeoDataFrame with the new row
+        line_gdf = gpd.GeoDataFrame([new_row], geometry=[line], crs=self.gdf.crs)
+        line_gdf.set_crs(epsg=4326, inplace=True)
+        line_gdf.to_file(os.path.join(os.getcwd(), filepath), driver='ESRI Shapefile')
+
+    def appendToLineShapefile(self, filepath, start_index, end_index):
+        """adds the self.gdf entries to the shapefile at filepath. if the file doesn't exist, then creates one.
+        """
+        full_path = os.path.join(os.getcwd(),filepath)
+        if not os.path.exists(full_path):
+            if start_index and end_index:
+                self.toLineShapefile(filepath, start_index, end_index)
+            else:
+                self.toLineShapefile(filepath)
+
+        else:
+            existing_gdf = gpd.read_file(full_path)
+            existing_df = existing_gdf.reset_index(drop=True)
+            if self.cruiseID in existing_df.cruiseID.values:
+                pass
+            print(f"appending to shapefile: {self.cruiseID}")
+            ###SUBSET IN GLBA
+            ###
+
+            if start_index and end_index:
+                line = LineString(self.gdf.loc[start_index:end_index].geometry.values)
+                distance = self.getDistanceAlongPath(start_index, end_index)[1]
+                time = self.getTimelapseAlongPath(start_index, end_index)
+
+            else: 
+                line = LineString(self.gdf.geometry.values)
+                distance = self.getDistanceAlongPath(self.gdf.index[0], self.gdf.index[-1])[1]
+                time = self.getTimelapseAlongPath(self.gdf.index[0], self.gdf.index[-1])
+
+
+            new_row = {
+                'cruiseID': self.cruiseID,
+                'boatName': self.boatName,
+                'startDate': str(min(self.days)),
+                'endDate': str(max(self.days)),
+                'departGLBA': str(self.getLastTimestampInGlacierBay()),
+                'afterGLBA': self.getPortAfterGlacierBay(),
+                'distance' : distance,
+                'time' : time
+            }
+        
+            # Create a new GeoDataFrame with the new row
+            new_line_gdf = gpd.GeoDataFrame([new_row], geometry=[line], crs=self.gdf.crs)
+            new_line_gdf.set_crs(epsg=4326, inplace=True)
+
+                # Convert date columns to datetime format
+            new_line_gdf['startDate'] = pd.to_datetime(new_line_gdf['startDate'])
+            new_line_gdf['endDate'] = pd.to_datetime(new_line_gdf['endDate'])
+            new_line_gdf['departGLBA'] = pd.to_datetime(new_line_gdf['departGLBA'])
+
+            # Specify other column types explicitly
+            new_line_gdf = new_line_gdf.astype({
+                'cruiseID': 'str',
+                'boatName': 'str',
+                'afterGLBA': 'str'
+            })
+      
+            
+            new_df = new_line_gdf.reset_index(drop=True)
+            
+            combined_df = pd.concat([existing_df, new_df], ignore_index=True)
+            
+            updated_gdf = gpd.GeoDataFrame(combined_df, geometry='geometry', crs=self.gdf.crs)
+            
+            # Write the updated GeoDataFrame back to the shapefile
+            updated_gdf.to_file(full_path, driver='ESRI Shapefile')
+            # Append all new rows to the result DataFrame at once
+
+    def fillPointsWithinGlacierBay(self):
+        """Populates new inGLBA column as True or false depending on intersection with the GLBA boundary polygon. 
+           Will be used to determine exit time from GLBA
+        """
+        search_area = BoatData.GLBA_BOUNDARY
+        search_area = search_area.to_crs(4326)
+        self.gdf['inGLBA'] = None #initialize column and set default to None type
+        
+        intersecting_points = self.gdf[self.gdf.geometry.intersects(search_area.geometry.unary_union)]
+        intersecting_indices = intersecting_points.index
+        if not intersecting_indices.empty:
+            self.gdf.loc[intersecting_indices, 'inGLBA'] = True
+
+            last_true_index = intersecting_indices[-1]
+            next_index = self.gdf.index[self.gdf.index > last_true_index][0] if last_true_index < self.gdf.index[-1] else None
+
+            #print(f"Last True Index: {last_true_index}, Next Index: {next_index}")
+        else:
+            print("No intersecting points found.")
+
+        return next_index
+     
+    def toPointShapefile(self, filepath):
+        # Create geometries from lon and lat
+        geometry = [Point(xy) for xy in zip(self.data['lon'], self.data['lat'])]
+        gdf = gpd.GeoDataFrame(self.data, geometry=geometry)
+        gdf.set_crs(epsg=4326, inplace=True)
+        
+        # Add additional information
+        gdf['cruiseID'] = self.cruiseID
+        gdf['boatName'] = self.boatName
+        gdf['startDate'] = str(min(self.days))
+        gdf['endDate'] = str(max(self.days))
+        gdf['departGLBA'] = str(self.getLastTimestampInGlacierBay())
+        gdf['afterGLBA'] = self.getPortAfterGlacierBay()
+
+        gdf.to_file(os.path.join(os.getcwd(), filepath), driver='ESRI Shapefile')
+        self.gdf = gdf
+
+    def appendToPointShapefile(self, filepath):
+        """Adds the self.gdf entries to the shapefile at filepath. If the file doesn't exist, then creates one."""
+        full_path = os.path.join(os.getcwd(), filepath)
+        
+        # Create geometries from lon and lat
+        geometry = [Point(xy) for xy in zip(self.data['lon'], self.data['lat'])]
+        gdf = gpd.GeoDataFrame(self.data[['bs_ts', 'name', 'sog', 'cog']], geometry=geometry)
+        gdf.set_crs(epsg=4326, inplace=True)
+        
+        # Add additional information
+        gdf['cruiseID'] = self.cruiseID
+        gdf['boatName'] = self.boatName
+        gdf['startDate'] = str(min(self.days))
+        gdf['endDate'] = str(max(self.days))
+        gdf['departGLBA'] = str(self.getLastTimestampInGlacierBay())
+        gdf['afterGLBA'] = self.getPortAfterGlacierBay()
+
+        if not os.path.exists(full_path):
+            gdf.to_file(full_path, driver='ESRI Shapefile')
+        else:
+            existing_gdf = gpd.read_file(full_path)
+            
+            # Convert date columns to datetime format
+            existing_gdf['startDate'] = pd.to_datetime(existing_gdf['startDate'])
+            existing_gdf['endDate'] = pd.to_datetime(existing_gdf['endDate'])
+            existing_gdf['departGLBA'] = pd.to_datetime(existing_gdf['departGLBA'])
+            
+            # Append the new GeoDataFrame to the existing one
+            combined_gdf = pd.concat([existing_gdf, gdf], ignore_index=True)
+            
+            # Write the combined GeoDataFrame back to the shapefile
+            combined_gdf.to_file(full_path, driver='ESRI Shapefile')
     
     ##### BOOLEAN METHODS #####
 
@@ -314,6 +495,18 @@ class Cruise(AIS):
         
         #Thins the data to every 
     
+    def assignBoatName(self):
+        if self.boatName is None:
+            self.boatName = self.gdf.name[0]
+        else:
+            print('error in assignboatname()')
+    
+    def subset(self, start_index, end_index):
+        """returns a subset of the geodataframe
+        """
+        print(f'start_index: {start_index}, end_index: {end_index}')
+        return self.gdf.iloc[start_index:end_index]
+
     ##### PORT OF CALL & ITINERARY ANALYSIS #####
 
     def assignPorts(self):
@@ -324,8 +517,13 @@ class Cruise(AIS):
         search_area = Cruise.DOCK_BUFFERS
         search_area = search_area.to_crs(4326)
         self.gdf['port'] = None
-        self.gdf['port'].iloc[-1] = 'EndOfCruise' # default for now since we don't have many Seattle/CAN cruises
+        self.gdf.at[self.gdf.index[0], 'port'] = 'StartOfCruise'
+        self.gdf.at[self.gdf.index[-1], 'port'] = 'EndOfCruise' # default for now since we don't have many Seattle/CAN cruises
         self.gdf['status'] = 'inTransit'  # Default to 'inTransit'
+                
+        self.gdf.at[self.gdf.index[0], 'status'] = 'inPort'
+        self.gdf.at[self.gdf.index[-1], 'status'] = 'inPort'
+
         self.gdf['next_port'] = None
         
         # Iterate over all ports in the search area
@@ -341,43 +539,53 @@ class Cruise(AIS):
                 print('populating column for', buffer['name'])
                 print(f'There were {len(intersecting_points1)} points within the geofence and  {len(intersecting_points2)} moored or at rest, populating {len(intersecting_indices)} entries in the column')
             else:
-                print('no entries for', buffer['name'])
+                pass
+                #print('no entries for', buffer['name'])
 
         # Create a new column with backward filled values
         self.gdf['filled_port'] = self.gdf['port'].fillna(method='bfill')
         # Update NaN values in the original 'port' column to be 'to' + the filled value
         self.gdf['next_port'] = self.gdf.apply(lambda row: f"to{row['filled_port']}" if pd.isna(row['port']) else row['port'], axis=1)
 
-
     def initializeItinerary(self):
         """Initializes the itinerary dictionary for the cruise, storing port information and directionality.
         """
         self.itinerary = []
+        current_port = None
+        previous_port = None
 
-        for idx, row in sorted_gdf.iterrows():
+        for idx, row in self.gdf.iterrows():
             if row['status'] == 'inPort':
-                if current_port is not None:
-                    # Append the previous port's details and the next port
-                    self.itinerary.append({
-                        'from_port': current_port,
-                        'to_port': row['port'],
-                        'timestamp': row['bs_ts']
-                    })
                 current_port = row['port']
-        
-        # Add the final port (if needed)
-        if current_port is not None:
-            self.itinerary.append({
-                'from_port': current_port,
-                'to_port': 'End of Cruise',
-                'timestamp': sorted_gdf.iloc[-1]['bs_ts']
-            })
+                if current_port is not None:
+                    if current_port != previous_port:
+                        # Append the previous port's details and the next port
+                        self.itinerary.append({
+                            'from_port': current_port,
+                            'timestamp': row['bs_ts']
+                        })
+                        previous_port = current_port
+                    else:
+                        continue
+                else:
+                    print('error in initialize Itinerary')
 
         # Print the itinerary for debugging
         for leg in self.itinerary:
-            print(f"From {leg['from_port']} to {leg['to_port']} at {leg['timestamp']}")
+            print(f"In {leg['from_port']}, entered port at {leg['timestamp']}")
 
     ##### TRANSIT ANALYTICS #####
+
+    def getPointsInPort(self, portName):
+        """returns the subset of points moored in portName
+        """
+        return self.gdf[self.gdf.port == portName]
+
+    def getLastTimestampInPort(self, portName):
+        """Returns timestamp value for the last point moored in portName
+        """
+        subset = self.getPointsInPort(portName)
+        return subset.bs_ts.iloc[-1], subset.bs_ts.iloc[-1].index
 
     def getTransitToNextPort(self, portName): 
         """returns the data subset that includes the transit between port portName and the next logged port.
@@ -389,100 +597,94 @@ class Cruise(AIS):
         return self.gdf.iloc[lastPointInPort + 1 : lastPointInTransit - 1]
 
     def averageTransitSpeed(self, transitSub):
-        distance_km = self.getDistanceAlongPath(transitSub.index[0], transitSub.index[-1])
-        time_elapsed = transitSub.bs_ts.iloc[-1] - transitSub.bs_ts.iloc[0]
+        _, distance_km = self.getDistanceAlongPath(transitSub.index[0], transitSub.index[-1])
+        time_elapsed_seconds = (transitSub.bs_ts.iloc[-1] - transitSub.bs_ts.iloc[0]).total_seconds()
+        time_elapsed_hours = time_elapsed_seconds / 3600
+        print(distance_km)
+        print(time_elapsed_hours)
+        return distance_km/time_elapsed_hours
 
-    ##### DEPRECATED ITINERARY METHODS #####
+    def getFirstIndexInPort(self, portName):
+        """Returns the index of the first occurrence of being in a port."""
+        filtered_gdf = self.gdf[self.gdf.port == portName]
+        if filtered_gdf.empty:
+            raise ValueError(f"Port {portName} not found in the GeoDataFrame.")
+        return filtered_gdf.index[0]
 
-    def populatePortsColumn(self): # DEPRECATED
-        """Adds a column that specifies the location as either within a port or at sea
-           port location is determined by containmenet of an AIS point within a 2km circular buffer around ports of interest.
+    def getLastIndexInPort(self, portName):
+        """Returns the index of the last occurrence of being in a port."""
+        filtered_gdf = self.gdf[self.gdf.port == portName]
+        if filtered_gdf.empty:
+            raise ValueError(f"Port {portName} not found in the GeoDataFrame.")
+        return filtered_gdf.index[-1]
+
+
+    ##### GLACIER BAY ANALYSIS #####
+
+    def getLastTimestampInGlacierBay(self):
+        if self.visitsGlacierBay():
+            first_index_outside_GLBA = self.fillPointsWithinGlacierBay()
+            last_timestamp = self.gdf.bs_ts.iloc[first_index_outside_GLBA - 1] # get timestamp of last point in GLBA
+            if last_timestamp is not None:
+                return last_timestamp
+        else:
+            return 'error in getLastTimestampInGLBA'
+
+    def getPortAfterGlacierBay(self):
+        if self.visitsGlacierBay():
+            first_index_outside_GLBA = self.fillPointsWithinGlacierBay()
+            next_port = self.getNextPort(first_index_outside_GLBA)
+            if next_port is not None:
+                return next_port
+
+    ##### ITINERARY FUNCTIONS #####
+
+    def displayItinerary(self):
+        """Returns a string of the days for the cruise and the locations visited
+            ex. NORWEGIAN BLISS 
+                7/1 Juneau
+                7/2 Juneau -> Icy Strait
+                7/3 Icy Strait --> At Sea
+                7/4 At Sea
+                7/5 Seward
+                7/6 Seward --> At Sea
+                7/7 At Sea --> GLBA --> Juneau
+                7/8 Juneau
         """
-        if self.portsOfCall is not None:
-            search_area = Cruise.DOCK_BUFFERS
-            search_area = search_area.to_crs(4326)
-            self.gdf['port'] = None
-            for _, buffer in search_area.iterrows():
-                # Check if any point intersects with this buffer
-                intersecting_indices = self.gdf[self.gdf.geometry.intersects(buffer.geometry)].index
-                if len(intersecting_indices) > 0:
-                    self.gdf.loc[intersecting_indices, 'port'] = buffer['name']
-                    #print('populating column for', buffer['name'])
-                else:
-                    print('error in populatePortsColumn')
+        #date_range = pd.date_range(self.days[0], self.days[-1]) self.days is sorted already so useable in loop
 
-        else:
-            self.listPorts()
-            self.populatePortsColumn()
+        port = ''
+        previous_port = ''
 
-    def getItinerary(self):
-        if self.portsOfCall is not None:
-            start_date = min(self.days)
-            end_date = max(self.days)
+        df = pd.DataFrame(self.gdf)
 
-            # Create a date range from the start to end date
-            date_range = pd.date_range(start=start_date, end=end_date)
+        # Initialize the itinerary dictionary
+        itinerary = {}
+        ports_of_call = []
 
-            # Prepare a dictionary to hold the itinerary
-            self.daily_itinerary = {}
-            print(date_range)
-            # Populate the itinerary
-            for date in date_range:
-                date_str = date.strftime('%m/%d')
-                daily_ports = []
-                for port, dates in self.portsOfCall.items():
-                    formatted_dates = [d.strftime('%m/%d') for d in dates]
-                    if date_str in formatted_dates:
-                        daily_ports.append(port)
+        # Iterate over the DataFrame and populate the itinerary
+        for index, row in df.iterrows():
+            date_key = (row['bs_ts'].year, row['bs_ts'].month, row['bs_ts'].day)
+            port = row['port']
+            if not ports_of_call and port != 'at sea':
+                ports_of_call.append(port)
+                pass
+            if port == previous_port:
+                continue
+            if date_key not in itinerary:
+                itinerary[date_key] = []
+            if port not in itinerary[date_key] and port != previous_port:
+                itinerary[date_key].append(port)
+                if port != 'at sea' and ports_of_call[-1] != port:
+                    ports_of_call.append(port)
+                previous_port = port    
 
-                #daily_ports = [port for port, dates[1] in self.portsOfCall.items() if date_str in [d.strftime('%m/%d') for d in dates]]
-                daily_itinerary[date.strftime('%Y-%m-%d')] = daily_ports
-
-            # Print the daily itinerary
-            # for date, ports in daily_itinerary.items():
-            #     print(f"{date}: {', '.join(ports) if ports else 'At Sea'}")
-            return self.daily_itinerary
-        else:
-            self.listPorts()
-            self.getItinerary()
-
-    def listPorts_old(self):
-        """returns a list of the ports of call visited by the cruise during its itinerary
-           ASSIGNS self.portsOfCall as a dict where each key is the dock visited
-           and the values are the timestamps of the points that visited that dock
-        """
-        if self.gdf is None:
-            self.dataToGeodata()
-        if self.portsOfCall is None:
-            self.portsOfCall = {}
-            self.timestamps_of_interest = []
-            search_area = Cruise.DOCK_BUFFERS
-            search_area = search_area.to_crs(4326)
-            #print(search_area)
-            #search_radius = .1125  # ~ 2 mile radius in degrees
-            # Collect the names of features in the buffer layer that intersect with any of the buffers from the points layer
-            for _, buffer in search_area.iterrows():
-                buffer_geom = buffer['geometry']  # Buffer geometry
-                # Check if any point intersects with this buffer
-                intersecting_indices = self.gdf[self.gdf.geometry.intersects(buffer_geom)].index
-
-                if len(intersecting_indices) > 0:
-                    #print('match found for', buffer['name'])
-                    dock_name = buffer['name']
-                    #print(f'Match found for {dock_name}')
-                    # Retrieve the timestamps of the intersecting points
-                    timestamps = self.gdf.loc[intersecting_indices, 'bs_ts'].tolist()
-                    timestamps_formatted = format_timestamp_range2(timestamps)
-                    self.portsOfCall[dock_name] = (timestamps_formatted, timestamps)
-                else:
-                    pass
-            s = ''
-            for key, value in self.portsOfCall.items():
-                s += f'{key}: {value[0]} \n'
-            return s
-        else:
-            print('self.portsOfCall has been assigned error in listPorts')
-            return None
+        # Display the itinerary
+        for date_key, ports in itinerary.items():
+            year, month, day = date_key
+            print(f"{year}-{month:02d}-{day:02d}: {', '.join(ports)}")
+        print()
+        print(ports_of_call)
 
     def getPortsOfCall(self):
         """Retrieves the ports of call for the cruise instance in order of appearance and sets it to an object variable.
@@ -505,10 +707,10 @@ class Cruise(AIS):
 
     def getNextPort(self, current_index):
         """Get the next port after the given index in the itinerary."""
-        for i in range(current_index + 1, len(self.data)):
-            if self.data.loc[i, 'port'] != 'at sea':
-                return self.data.loc[i, 'port']
-        return None
+        for i in range(current_index + 1, len(self.gdf)):
+            if self.gdf.loc[i, 'port'] is not None:
+                return self.gdf.loc[i, 'port']
+        return 'Error'
 
     def getNextPorts(self, timestamp):
         """Returns tuple of current and next destinations.
@@ -592,56 +794,6 @@ class Cruise(AIS):
         # Show the plot
         plt.show()
 
-    ##### ITINERARY FUNCTIONS #####
-
-    def displayItinerary(self):
-        """Returns a string of the days for the cruise and the locations visited
-            ex. NORWEGIAN BLISS 
-                7/1 Juneau
-                7/2 Juneau -> Icy Strait
-                7/3 Icy Strait --> At Sea
-                7/4 At Sea
-                7/5 Seward
-                7/6 Seward --> At Sea
-                7/7 At Sea --> GLBA --> Juneau
-                7/8 Juneau
-        """
-        #date_range = pd.date_range(self.days[0], self.days[-1]) self.days is sorted already so useable in loop
-
-        port = ''
-        previous_port = ''
-
-        df = pd.DataFrame(self.gdf)
-
-        # Initialize the itinerary dictionary
-        itinerary = {}
-        ports_of_call = []
-
-        # Iterate over the DataFrame and populate the itinerary
-        for index, row in df.iterrows():
-            date_key = (row['bs_ts'].year, row['bs_ts'].month, row['bs_ts'].day)
-            port = row['port']
-            if not ports_of_call and port != 'at sea':
-                ports_of_call.append(port)
-                pass
-            if port == previous_port:
-                continue
-            if date_key not in itinerary:
-                itinerary[date_key] = []
-            if port not in itinerary[date_key] and port != previous_port:
-                itinerary[date_key].append(port)
-                if port != 'at sea' and ports_of_call[-1] != port:
-                    ports_of_call.append(port)
-                previous_port = port    
-
-        # Display the itinerary
-        for date_key, ports in itinerary.items():
-            year, month, day = date_key
-            print(f"{year}-{month:02d}-{day:02d}: {', '.join(ports)}")
-        print()
-        print(ports_of_call)
-
-
     ####### HELPER FUNCTIONS #######
 
     def getOtherCruises(self):
@@ -661,6 +813,98 @@ class Cruise(AIS):
         formatted_str = timestamp.strftime('%b %d, %H:%M')
         
         return formatted_str
+
+    ##### DEPRECATED ITINERARY METHODS #####
+
+    def populatePortsColumn(self): # DEPRECATED
+        """Adds a column that specifies the location as either within a port or at sea
+           port location is determined by containmenet of an AIS point within a 2km circular buffer around ports of interest.
+        """
+        if self.portsOfCall is not None:
+            search_area = Cruise.DOCK_BUFFERS
+            search_area = search_area.to_crs(4326)
+            self.gdf['port'] = None
+            for _, buffer in search_area.iterrows():
+                # Check if any point intersects with this buffer
+                intersecting_indices = self.gdf[self.gdf.geometry.intersects(buffer.geometry)].index
+                if len(intersecting_indices) > 0:
+                    self.gdf.loc[intersecting_indices, 'port'] = buffer['name']
+                    #print('populating column for', buffer['name'])
+                else:
+                    print('error in populatePortsColumn')
+
+        else:
+            self.listPorts()
+            self.populatePortsColumn()
+
+    def getItinerary(self): # DEPRECATED
+        if self.portsOfCall is not None:
+            start_date = min(self.days)
+            end_date = max(self.days)
+
+            # Create a date range from the start to end date
+            date_range = pd.date_range(start=start_date, end=end_date)
+
+            # Prepare a dictionary to hold the itinerary
+            self.daily_itinerary = {}
+            print(date_range)
+            # Populate the itinerary
+            for date in date_range:
+                date_str = date.strftime('%m/%d')
+                daily_ports = []
+                for port, dates in self.portsOfCall.items():
+                    formatted_dates = [d.strftime('%m/%d') for d in dates]
+                    if date_str in formatted_dates:
+                        daily_ports.append(port)
+
+                #daily_ports = [port for port, dates[1] in self.portsOfCall.items() if date_str in [d.strftime('%m/%d') for d in dates]]
+                daily_itinerary[date.strftime('%Y-%m-%d')] = daily_ports
+
+            # Print the daily itinerary
+            # for date, ports in daily_itinerary.items():
+            #     print(f"{date}: {', '.join(ports) if ports else 'At Sea'}")
+            return self.daily_itinerary
+        else:
+            self.listPorts()
+            self.getItinerary()
+
+    def listPorts(self): # DEPRECATED
+        """returns a list of the ports of call visited by the cruise during its itinerary
+           ASSIGNS self.portsOfCall as a dict where each key is the dock visited
+           and the values are the timestamps of the points that visited that dock
+        """
+        if self.gdf is None:
+            self.dataToGeodata()
+        if self.portsOfCall is None:
+            self.portsOfCall = {}
+            self.timestamps_of_interest = []
+            search_area = Cruise.DOCK_BUFFERS
+            search_area = search_area.to_crs(4326)
+            #print(search_area)
+            #search_radius = .1125  # ~ 2 mile radius in degrees
+            # Collect the names of features in the buffer layer that intersect with any of the buffers from the points layer
+            for _, buffer in search_area.iterrows():
+                buffer_geom = buffer['geometry']  # Buffer geometry
+                # Check if any point intersects with this buffer
+                intersecting_indices = self.gdf[self.gdf.geometry.intersects(buffer_geom)].index
+
+                if len(intersecting_indices) > 0:
+                    #print('match found for', buffer['name'])
+                    dock_name = buffer['name']
+                    #print(f'Match found for {dock_name}')
+                    # Retrieve the timestamps of the intersecting points
+                    timestamps = self.gdf.loc[intersecting_indices, 'bs_ts'].tolist()
+                    timestamps_formatted = format_timestamp_range2(timestamps)
+                    self.portsOfCall[dock_name] = (timestamps_formatted, timestamps)
+                else:
+                    pass
+            s = ''
+            for key, value in self.portsOfCall.items():
+                s += f'{key}: {value[0]} \n'
+            return s
+        else:
+            print('self.portsOfCall has been assigned error in listPorts')
+            return None
 
 ################################################################
 
