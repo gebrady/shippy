@@ -14,36 +14,36 @@ for boat_name, boat_data in a.boatsData.boatsDataDictionary.items():
         if cruise_data.visitsGlacierBay():
             data[cruise_id] = cruise_data
 
-print(data)
-c = data['NORWEGIAN ENCORE_08']
+print(len(data))
+# c = data['NORWEGIAN ENCORE_08']
 
-#print(c.days)
-c.dataToGeodata()
-c.populatePortsColumn()
+# #print(c.days)
+# c.dataToGeodata()
+# c.populatePortsColumn()
 
-print(c.data.head())
+# print(c.data.head())
 
-print(c.data.nav_status)
+# print(c.data.nav_status)
 
-test = c.gdf
+# test = c.gdf
 
-test = test[test['sog'] <= .5]
-print(test)
+# test = test[test['sog'] <= .5]
+# print(test)
 
-test = c.gdf
+# test = c.gdf
 
-test = test[test['nav_status'] != 'Under way using engine']
-print(test[['sog', 'port', 'lat', 'lon', 'nav_status']])
+# test = test[test['nav_status'] != 'Under way using engine']
+# print(test[['sog', 'port', 'lat', 'lon', 'nav_status']])
 
-print(test['sog'].value_counts())
-print(test['nav_status'].value_counts())
-print(test['port'].value_counts())
+# print(test['sog'].value_counts())
+# print(test['nav_status'].value_counts())
+# print(test['port'].value_counts())
 
-print(c.gdf['port'].value_counts())
+# print(c.gdf['port'].value_counts())
 
 
 #print(c.gdf[c.gdf[c.gdf.sog < 3]])
-# _, b = c.getDistanceAlongPath(40,400)
+# _, b = PathCalculations.distanceAlongPath(c.gdf.geometry, 40,400)
 # print(b)
 # print(c.displayItinerary())
 # #c.plotCruise()

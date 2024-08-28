@@ -23,6 +23,6 @@ c = data['NORWEGIAN ENCORE_08']
 #print(c.days)
 c.dataToGeodata()
 
-_, b = c.getDistanceAlongPath(40,400)
+_, b = PathCalculations.distanceAlongPath(c.gdf.geometry, 40,400)
 print(b)
 #c.plotCruise()

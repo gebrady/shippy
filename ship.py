@@ -1,173 +1,18 @@
 import pandas as pd
+from CruiseSorter import *
 import os
 import secrets
 import time
 import matplotlib.pyplot as plt
 from datetime import datetime
+from pathcalculations import *
 import pytz
-
-import geopandas as gpd
-from geopy.distance import distance
-from shapely.geometry import Point, LineString
-from geopy.distance import geodesic
-
-from shapely.ops import nearest_points
 
 # Custom class representing AIS functionality
 class AIS():
 
     def __repr__(self):
         return 'AIS: Testing worked'
-
-class BoatsData:
-    ALASKA_COASTLINE = gpd.read_file(r'./shapes/Alaska_Coastline/Alaska_Coastline.shp')
-    ALASKA_COASTLINE_ALBERS = ALASKA_COASTLINE.to_crs(epsg=3338)
-    ALASKA_COASTLINE_WGS84 = ALASKA_COASTLINE.to_crs(epsg=4326)
-
-    def __init__(self):
-        self.boatsDataDictionary = {}  # Dictionary to store BoatData instances
-        self.previousBoatName = ""
-        self.nanData = []  # To store rows with NaN values
-
-    def __str__(self):
-        string = ""
-        for key, value in self.boatsDataDictionary.items():
-            string = string + str(key) + ": " + str(value) + '\n'
-        return string
-    
-    def parseRows(self, rows):
-        """Reads tabular data as rows, sorting them into NaN, and other BoatData Objects.
-           The rows are assigned to particular Cruise objects within that Class and stored as such.
-        """
-        boat_data = None
-        grouped = rows.groupby('name', dropna = False)
-        
-        for boatName, group in grouped:
-            group = group.sort_values(by='bs_ts', ascending=True)
-            if pd.isna(boatName):
-                self.nanData.extend(group.values.tolist())
-                continue
-            
-            if boatName not in self.boatsDataDictionary or not boatName:
-                self.boatsDataDictionary[boatName] = BoatData(boatName)
-            
-            self.boatsDataDictionary[boatName].processGroup(group)
-
-class BoatData(AIS):
-    TIME_THRESHOLD = pd.Timedelta(days=1) #if entry appears on next day, belongs to same cruise
-    GLBA_BOUNDARY = gpd.read_file(r'./shapes/glba_geofence.shp')
-
-    def __init__(self, boatName):
-        super().__init__()
-        self.cruisesDataDictionary = {}  # Dictionary to store Cruise instances
-        self.boatName = boatName  # Store boat name    
-        self.previousBoatName = ''
-        self.cruiseID = '' ####
-        self.previousCruiseID = ''
-
-    def __str__(self):
-        string = ''
-        for key, value in self.cruisesDataDictionary.items():
-            string = string + str(key) + ": " + str(value) + '\n'
-        return string
-    
-    def processGroup(self, group):
-        #print('processing group', group['name'].head)
-        group = self.orderGroupByTime(group)
-        #print(group['bs_ts'].head)
-        #print(f'this group: {group.name[0]}, last boat: {self.previousBoatName} ')
-        # first few lines
-        if self.groupMatchesLastCruise(group):
-            self.cruisesDataDictionary[self.previousCruiseID].addGroup(group)
-        elif self.newBoatEncountered(group):
-            self.sortAndAddGroup(group)
-        else:
-            print(f'new cruise found for {self.boatName}')
-            self.incrementCruisesDataDictionary(group)
-            self.cruisesDataDictionary[self.cruiseID].addGroup(group)
-        
-        self.previousCruiseID = self.cruiseID
-        self.previousBoatName = self.boatName
-
-    ####### HELPER FUNCTIONS #######
-
-    def orderGroupByTime(self, group):
-        """Orders the input group chronologically (timestamps) and returns the group 
-           in the new order with an object desribing the date for those data.
-        """
-        group['bs_ts'] = pd.to_datetime(group['bs_ts'], utc = True).dt.tz_convert(pytz.timezone('US/Alaska'))
-        group.sort_values(by='bs_ts', inplace=True)
-        return group.reset_index(drop=True)
-
-    def sortAndAddGroup(self, group): ##### DEPRECATED?
-        """Adds data to the initial cruise if this is a new entry
-           sorts the data to a cruise using timestamps, adds after identifying
-           increments into a new cruise for an existing boats and adds.
-        """
-        group_date = group['bs_ts'][0].date()
-        if len(self.cruisesDataDictionary) == 1:
-            self.cruisesDataDictionary[self.cruiseID].addGroup(group)
-        elif len(self.cruisesDataDictionary) > 1:
-            for cruiseID, cruiseData in self.cruisesDataDictionary.items():
-                if any((cruiseData['bs_ts'].dt.date == group_date) or (cruiseData['bs_ts'].dt.date + BoatData.TIME_THRESHOLD == group_date)):
-                    self.cruiseID = cruiseID
-                    self.cruisesDataDictionary[self.cruiseID].addGroup(group)
-                    #print(f'adding new entries to cruise: {self.cruiseID}')
-                    break
-                else: # new cruise found for this boat
-                    print(f'new cruise found for {self.boatName}')
-                    self.incrementCruisesDataDictionary(group)
-                    self.cruisesDataDictionary[self.cruiseID].addGroup(group)
-        else:
-            print('error in sortAndAddGroup')
-
-    def initializeCruisesDataDictionary(self):
-        """Assigns first cruiseID using boat name, creates an empty cruisesDataDictionary.
-        """
-        self.cruiseID = self.boatName + '_01'
-        self.cruisesDataDictionary[self.cruiseID] = Cruise(self.cruiseID)
- 
-    def incrementCruisesDataDictionary(self, group):
-        """creates a new entry in cruisesDataDictionary with an incremented cruiseID, updates instance variables.
-        """
-        self.cruiseID = self.boatName + f'_{len(self.cruisesDataDictionary) + 1:02d}'
-        self.cruisesDataDictionary[self.cruiseID] = Cruise(self.cruiseID)
-   
-    def inPreviousCruiseRange(self, group_date):
-        """checks if date of current group meets threshold to belong to previous edited cruise.
-        """
-        (group_date - BoatData.TIME_THRESHOLD) in self.cruisesDataDictionary[self.previousCruiseID].days
-    
-    def groupMatchesLastCruise(self, group):
-        """Returns true if current group data belongs to the last processed group. False otherwise.
-        """
-        group_date = group['bs_ts'][0].date()
-        return self.boatName == self.previousBoatName and (group_date - BoatData.TIME_THRESHOLD) in self.cruisesDataDictionary[self.previousCruiseID].days
-
-    def newBoatEncountered(self, group):
-        """Checks if new boat name from previous group, initializes cruisesDataDictionary at
-           new cruiseID if None, and returns False for error
-        """
-        if self.boatName != self.previousBoatName:
-            if not self.cruisesDataDictionary: #if empty
-                #print('No Cruise Object, making instance for:', self.boatName)
-                self.initializeCruisesDataDictionary()
-            return True
-        else: return False
-
-    ##### MANAGEMENT METHODS #####
-
-    def getOtherCruises(self, cruiseName):
-        if cruiseName in self.cruisesDataDictionary:
-            return self.cruisesDataDictionary[cruiseName].getOtherCruises()
-        else:
-            return []
-
-    def getCruise(self, cruiseName):
-        if cruiseName in self.cruisesDataDictionary:
-            return self.cruisesDataDictionary[cruiseName]
-        else:
-            return None
 
 class Cruise(AIS):
 
@@ -238,6 +83,13 @@ class Cruise(AIS):
 
     ##### GEOSPATIAL METHODS #####
 
+    import geopandas as gpd
+    from geopy.distance import distance
+    from shapely.geometry import Point, LineString
+    from geopy.distance import geodesic
+
+    from shapely.ops import nearest_points
+
     def dataToGeodata(self): # Convert self.data to a geodataframe
         """Converts a populated self.data to a geodataframe and stores it as self.gdf
         """
@@ -250,22 +102,6 @@ class Cruise(AIS):
             self.gdf = gdf
         else:
             pass
-
-    def getDistanceAlongPath(self, start_index, end_index): # 
-        """returns the distance along the path that connects points in self.gdf between start and end indices, inclusive
-           returns the list of individual distances in meters and then the total distance in kilometers
-        """
-        distances = []
-        for i in range(start_index, end_index):
-            point1 = self.gdf.geometry.iloc[i]
-            point2 = self.gdf.geometry.iloc[i + 1]
-            distances.append(geodesic((point1.y, point1.x), (point2.y, point2.x)).meters)
-        return distances, round(sum(distances)/1000,2)
-
-    def getTimelapseAlongPath(self, start_index, end_index):
-        time1 = self.gdf.bs_ts.iloc[start_index]
-        time2 = self.gdf.bs_ts.iloc[end_index]
-        return (time2-time1).seconds/3600 # time in hours
 
     def clipBoundary(self, boundary):
         """writes shapefile of cruiseData, using the boundary polygon to subset the geodataframe
@@ -301,13 +137,13 @@ class Cruise(AIS):
         print(self.gdf)
         if start_index and end_index:
             line = LineString(self.gdf.loc[start_index:end_index].geometry.values)
-            distance = self.getDistanceAlongPath(start_index, end_index)[1]
-            time = self.getTimelapseAlongPath(start_index, end_index)
+            distance = PathCalculations.distanceAlongPath(self.gdf.geometry, start_index, end_index)[1]
+            time = PathCalculations.timelapseAlongPath(self.gdf.bs_ts ,start_index, end_index)
 
         else: 
             line = LineString(self.gdf.geometry.values)
-            distance = self.getDistanceAlongPath(self.gdf.index[0], self.gdf.index[-1])[1]
-            time = self.getTimelapseAlongPath(self.gdf.index[0], self.gdf.index[-1])
+            distance = PathCalculations.distanceAlongPath(self.gdf.geometry, self.gdf.index[0], self.gdf.index[-1])[1]
+            time = PathCalculations.timelapseAlongPath(self.gdf.bs_ts, self.gdf.index[0], self.gdf.index[-1])
 
         new_row = {
             'cruiseID': self.cruiseID,
@@ -345,13 +181,13 @@ class Cruise(AIS):
 
             if start_index and end_index:
                 line = LineString(self.gdf.loc[start_index:end_index].geometry.values)
-                distance = self.getDistanceAlongPath(start_index, end_index)[1]
-                time = self.getTimelapseAlongPath(start_index, end_index)
+                distance = PathCalculations.distanceAlongPath(self.gdf.geometry, start_index, end_index)[1]
+                time = PathCalculations.timelapseAlongPath(self.gdf.bs_ts, start_index, end_index)
 
             else: 
                 line = LineString(self.gdf.geometry.values)
-                distance = self.getDistanceAlongPath(self.gdf.index[0], self.gdf.index[-1])[1]
-                time = self.getTimelapseAlongPath(self.gdf.index[0], self.gdf.index[-1])
+                distance = PathCalculations.distanceAlongPath(self.gdf.geometry, self.gdf.index[0], self.gdf.index[-1])[1]
+                time = PathCalculations.timelapseAlongPath(self.gdf.bs_ts, self.gdf.index[0], self.gdf.index[-1])
 
 
             new_row = {
@@ -501,12 +337,6 @@ class Cruise(AIS):
         else:
             print('error in assignboatname()')
     
-    def subset(self, start_index, end_index):
-        """returns a subset of the geodataframe
-        """
-        print(f'start_index: {start_index}, end_index: {end_index}')
-        return self.gdf.iloc[start_index:end_index]
-
     ##### PORT OF CALL & ITINERARY ANALYSIS #####
 
     def assignPorts(self):
@@ -536,8 +366,8 @@ class Cruise(AIS):
             if len(intersecting_indices) > 0:
                 self.gdf.loc[intersecting_indices, 'port'] = buffer['name']
                 self.gdf.loc[intersecting_indices, 'status'] = 'inPort'
-                print('populating column for', buffer['name'])
-                print(f'There were {len(intersecting_points1)} points within the geofence and  {len(intersecting_points2)} moored or at rest, populating {len(intersecting_indices)} entries in the column')
+                #print('populating column for', buffer['name'])
+                #print(f'There were {len(intersecting_points1)} points within the geofence and  {len(intersecting_points2)} moored or at rest, populating {len(intersecting_indices)} entries in the column')
             else:
                 pass
                 #print('no entries for', buffer['name'])
@@ -597,7 +427,7 @@ class Cruise(AIS):
         return self.gdf.iloc[lastPointInPort + 1 : lastPointInTransit - 1]
 
     def averageTransitSpeed(self, transitSub):
-        _, distance_km = self.getDistanceAlongPath(transitSub.index[0], transitSub.index[-1])
+        _, distance_km = PathCalculations.distanceAlongPath(self.gdf.geometry, transitSub.index[0], transitSub.index[-1])
         time_elapsed_seconds = (transitSub.bs_ts.iloc[-1] - transitSub.bs_ts.iloc[0]).total_seconds()
         time_elapsed_hours = time_elapsed_seconds / 3600
         print(distance_km)
@@ -709,7 +539,14 @@ class Cruise(AIS):
         """Get the next port after the given index in the itinerary."""
         for i in range(current_index + 1, len(self.gdf)):
             if self.gdf.loc[i, 'port'] is not None:
-                return self.gdf.loc[i, 'port']
+                return self.gdf.loc[i, 'port'], i
+        return 'Error'
+
+    def getPreviousPort(self, current_index):
+        """Get the previous port before the given index in the itinerary."""
+        for i in range(current_index - 1, -1, -1):
+            if self.gdf.loc[i, 'port'] is not None:
+                return self.gdf.loc[i, 'port'], i
         return 'Error'
 
     def getNextPorts(self, timestamp):

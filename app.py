@@ -1,14 +1,42 @@
 # Main application class
-from ship import *
+#from ship import *
+#from BoatData import BoatData
+from CruiseSorter import CruiseSorter
+from Cruise import Cruise
+from BoatData import BoatData
+from BoatsData import BoatsData
+from Geoprocessor import Geoprocessor
+
+import os
+import secrets
+import time
+import matplotlib.pyplot as plt
+from datetime import datetime
+from pathcalculations import *
+import pytz
+
 #from analyst import *
 import random
+import time
+import os
+import pandas as pd
+
+
 
 class App:
     def __init__(self, dataFolder):
         self.boatsData = BoatsData()  # Initialize BoatsData instance
         self.rowsParsedCount = 0
         self.populateBoatsData(dataFolder)  # Populate boatsData with data from CSV files
-        #self.analyst = Analyst(self.boatsData)
+
+        for _, boat_data in self.boatsData.boatsDataDictionary.items():
+            for _, cruise_data in boat_data.cruisesDataDictionary.items():
+                cruise_data.geoprocessor = Geoprocessor(cruise_data.data)
+                
+
+        self.boatsData.initializeStatistics()
+
+
 
     def __str__(self):
         return str(self.boatsData)  # String representation of boatsData
@@ -29,10 +57,7 @@ class App:
                 
         tok = time.perf_counter()
         print(f"Imported data from {count} files in {tok - tik:0.4f} seconds")
-
-    def run_analysis(self):
-        self.analysis.plot_data()
-        self.analysis.load_data_to_qgis(r'/Users/Graham/cruise/shapes')
+        print(f"Parsed {self.rowsParsedCount} rows in this import.")
 
     def getRandomCruise(self):
         """returns a random cruise object for testing
