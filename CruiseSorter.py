@@ -1,5 +1,11 @@
 import pandas as pd
-from ship import Cruise
+import geopandas as gpd
+
+from Cruise import Cruise
+from SegmentNode import SegmentNode
+from Segments import Segments
+from PortManager import PortManager
+
 
 class CruiseSorter:
     """Hands operations related to sorting data into cruises, returning flattened cruises for a whole boat,
@@ -14,7 +20,31 @@ class CruiseSorter:
         self.previousCruise = None # Placeholder for last Cruise edited
         self.currentCruise = None
 
-        #self.currentGroup = None # Placeholder for pd.DataFrame() data to be imported
+    def convert_to_segments(self):
+        """generates a Segments object (doubly linked list with SegmentNodes of AIS data). 
+           Each state change connects the nodes: inPort, inTransit, inPort, etc.
+           Use for flattening and resorting data into a cruise itinerary format.
+        """
+        big_df = self.flattenCruises() # if needed
+        big_df.set_geometry('geometry')
+        big_df = PortManager.populate_status_and_ports(big_df) # assigns rows as either inTransit/inPort and with geofence Port name or AtSea
+        big_df = PortManager.identify_status_changes(big_df)
+        
+        big_df.sort_values(by='segment_id')
+        grouped = big_df.groupby('segment_id')
+
+        #instantiate DLL and populate with each SegmentNode in chronological order, assign segmentID, return entire DLL from CruiseSorter.
+        segments = Segments()
+        for segment_id, group in grouped:
+            #print('adding node')
+            segments.add_node(group, segment_id)
+        
+        return segments
+        
+    def assign_cruise_id_from_segments(self):
+        pass
+
+    ########## SORTING METHODS FOR DATA IMPORT ############
 
     @classmethod
     def is_matching_cruise(cls, unassigned_group: pd.DataFrame, cruise) -> bool:
@@ -29,7 +59,7 @@ class CruiseSorter:
             return True
         return False
 
-    def sort_group(self, group: pd.DataFrame) -> None:
+    def sort_group(self, group: pd.DataFrame) -> None: 
         """
         Sort new data into existing cruises or create new cruises as needed.
         Args:
@@ -53,10 +83,12 @@ class CruiseSorter:
         self.createEmptyCruise()
         self.addToCruise(group, self.currentCruise)
         print(f'created new cruise for this: {self.currentCruise.cruiseID}')
+        return
 
     def addToCruise(self, unassigned_group, cruise) -> None:
-        cruise.addGroup(unassigned_group)
-        cruise.data['cruise_id'] = cruise.cruiseID
+        cruise.addGroup(unassigned_group) #main add function
+        #print('adding cruise within CruiseSorter')
+        cruise.data['cruise_id'] = cruise.cruiseID #update cruiseID
         self.previousCruise = cruise
 
     def createEmptyCruise(self) -> None:
@@ -89,13 +121,15 @@ class CruiseSorter:
         else:
             return 'No Matches'
         
-    def flattenCruises(self) -> pd.DataFrame:
+    ######## ADDITIONAL METHODS ###########
+
+    def flattenCruises(self) -> gpd.GeoDataFrame:
         """returns a summary of all the data together from self.boatData for the season.
         """
-        df = pd.DataFrame()
+        df = gpd.GeoDataFrame()
         for cruise_id, cruise_data in self.boatData.cruisesDataDictionary.items():
             df = pd.concat([df, cruise_data.data], ignore_index=True)
-        print('here is the flattened set of cruises')
+        #print('here is the flattened set of cruises')
         return df   
 
     def get_cruise_match(self, group):
@@ -105,7 +139,7 @@ class CruiseSorter:
         return None
             
     @staticmethod
-    def match(unassigned_group, cruise):
+    def match(unassigned_group, cruise): #deprecated
         """
         Static method to check if unassigned data matches a cruise based on time thresholds.
         """

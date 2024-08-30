@@ -8,14 +8,17 @@ class Statistics():
 
     def histogram(self, data, field):
         pass
-
-        
+ 
     def grouped_table(self, data, field):
         pass
 
     def summary_stats(self, data, group_field, stats_field):
         pass
     
+    @staticmethod
+    def mean(df, field):
+        return df[field].mean()
+
     @staticmethod
     def summary_table(boatsData, group_field : str, stats_fields : list, stats_type : list):
         agg_dict = {field: stats_type for field in stats_fields}

@@ -1,6 +1,7 @@
 from AIS import AIS
 from CruiseSorter import CruiseSorter
 from Geoprocessor import Geoprocessor
+from Slicer import Slicer
 import pandas as pd
 import geopandas as gpd
 import os
@@ -8,13 +9,13 @@ import secrets
 import time
 import matplotlib.pyplot as plt
 from datetime import datetime
-from pathcalculations import *
+from PathCalculations import PathCalculations
 import pytz
 
 
 
 class BoatData(AIS):
-    TIME_THRESHOLD = pd.Timedelta(days=1) #if entry appears on next day, belongs to same cruise
+    #TIME_THRESHOLD = pd.Timedelta(days=1) #if entry appears on next day, belongs to same cruise
     GLBA_BOUNDARY = gpd.read_file(r'./shapes/port_GLBA.shp')
     GLBA_BOUNDARY = GLBA_BOUNDARY.set_crs(epsg=4326)
 
@@ -25,10 +26,6 @@ class BoatData(AIS):
 
         self.sorter = CruiseSorter(self)
 
-        self.previousBoatName = '' # this is redundant should be a double check
-        self.cruiseID = None ####
-        self.previousCruiseID = ''
-
     def __str__(self):
         string = ''
         for key, value in self.cruisesDataDictionary.items():
@@ -38,38 +35,35 @@ class BoatData(AIS):
     #### IMPORTING DATA ####
 
     def processGroup(self, group):
-        group = self.orderGroupByTime(group) # convert group contents to AKDT and order as timestamps type
+        group = Slicer.orderGroupByTime(group) # convert group contents to AKDT and order as timestamps type
         self.sorter.sort_group(group)
-        self.previousCruiseID = self.cruiseID
-        self.previousBoatName = self.boatName
+
+    def aggregateGeodata(self):
+        """returns a flattened GeoDataFrame of all Cruise geodata from this boatData's cruiseDataDict
+        """
+        all_gdf = [cruise.gdf for _, cruise in self.cruisesDataDictionary.items() if cruise.gdf is not None]
+        return Geoprocessor.aggregate(all_gdf)
 
     def isEmpty(self):
         return not self.cruisesDataDictionary
-    
-    # def add_cruise(self, cruise: Cruise) -> None:
-    #     """Add a new cruise to the list of cruises."""
-    #     self.cruisesDataDictionary[cruise.cruiseID] = cruise
 
 
-    def processGroup2(self, group):
-        #print("Before sorting:", group)
-        group = self.orderGroupByTime(group) # convert group contents to AKDT and order as timestamps type
-        #print("After sorting:", group)
 
-        if self.matchesLastCruise(group): # if belongs to previous cruise of this boatName
-            self.cruisesDataDictionary[self.previousCruiseID].addGroup(group)
-            #print('matches previous cruiseID')
-        else:
-            if self.cruiseID is None: #initialize if first cruiseID for this boatName
-                print(f'initializing for {self.boatName}')
-                self.initializeCruisesDataDictionary()
-                self.cruisesDataDictionary[self.cruiseID].addGroup(group)
-            else:
-                print('sorting')
-                self.sortToCruise(group)
 
-        self.previousCruiseID = self.cruiseID
-        self.previousBoatName = self.boatName
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     ##################
     ## Sorting Data ##
@@ -99,14 +93,6 @@ class BoatData(AIS):
 
 
     ####### HELPER FUNCTIONS #######
-
-    def orderGroupByTime(self, group):
-        """Orders the input group chronologically (timestamps) and returns the group 
-           in the new order with an object desribing the date for those data.
-        """
-        group['bs_ts'] = pd.to_datetime(group['bs_ts'], utc = True).dt.tz_convert(pytz.timezone('US/Alaska'))
-        group.sort_values(by='bs_ts', inplace=True)
-        return group.reset_index(drop=True)
 
     def initializeCruisesDataDictionary(self): # deprecated
         """Assigns first cruiseID using boat name, creates an empty cruisesDataDictionary.

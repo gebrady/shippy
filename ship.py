@@ -5,7 +5,7 @@ import secrets
 import time
 import matplotlib.pyplot as plt
 from datetime import datetime
-from pathcalculations import *
+from PathCalculations import *
 import pytz
 
 # Custom class representing AIS functionality

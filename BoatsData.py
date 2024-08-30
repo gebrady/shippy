@@ -1,20 +1,23 @@
 from BoatData import BoatData
 from Statistics import Statistics
+from PortManager import PortManager
 
 import pandas as pd
 import geopandas as gpd
+from Geoprocessor import Geoprocessor
 
 import os
 import secrets
 import time
 import matplotlib.pyplot as plt
 from datetime import datetime
-from pathcalculations import *
+from PathCalculations import PathCalculations
 import pytz
 
 #from ship import *
 
 class BoatsData:
+    CLAA_DATA = pd.read_csv('./calendar/allyears_allports_claa.csv')
     ALASKA_COASTLINE = gpd.read_file(r'./shapes/Alaska_Coastline/Alaska_Coastline.shp')
     ALASKA_COASTLINE_ALBERS = ALASKA_COASTLINE.to_crs(epsg=3338)
     ALASKA_COASTLINE_WGS84 = ALASKA_COASTLINE.to_crs(epsg=4326)
@@ -55,4 +58,105 @@ class BoatsData:
         for _, boat_data in self.boatsDataDictionary.items():
             df = pd.concat([df, boat_data.sorter.flattenCruises()], ignore_index = True)
         return df
+
+    def run_glba_workflow(self):
+        count_glba_visits = 0
+        visit_table = pd.DataFrame()
+        new_rows = []
+        for boatName, boatData in self.boatsDataDictionary.items():
+            print(f'processing {boatName}')
+            data = boatData.sorter.flattenCruises()
+
+            data = PortManager.populate_status_and_ports(data)
+            data = PortManager.identify_status_changes(data)
+
+            within_glba = Geoprocessor.clip2(data, Geoprocessor.GLBA_BOUNDARY) # change this to be based on condition set during original check.
+            
+            grouped = within_glba.groupby('segment_id')
+            for segment_id, group in grouped: # create summary row for each segment of points within GLBA
+                ### enumerate segments to calculate metrics ###
+                start_index, end_index = group.index[0], group.index[-1] # index of last point in GLBA boundary -> specify 'exit line'
+                ts_in, ts_out = min(group.bs_ts), max(group.bs_ts)
+
+                start_index_next_port = data[data['segment_id'] == segment_id].index[-1] + 1
+                end_index_previous_port = data[data['segment_id'] == segment_id].index[0] - 1
+                #PortManager.getFirstIndexInNextPort(data, end_index)
+                #end_index_previous_port = PortManager.getLastIndexInPrevPort(data, start_index)
+
+                #GeoDataFrame for transit from GLBA to nextPort
+                sub_between_glba_next_port = data.iloc[end_index+1 : start_index_next_port-1]
+                #mean_sog_to_next_port = sub_between_glba_next_port.sog.mean()
+
+                portBefore = group['previous_port'].iloc[-1]
+                portAfter = group['next_port'].iloc[-1]
+
+                arrival_in_next_port = data.bs_ts.iloc[start_index_next_port]
+
+                timelapse_to_next_port = PathCalculations.timelapseAlongPath(data.bs_ts, end_index, start_index_next_port)
+                _, distance_to_next_port = PathCalculations.distanceAlongPath_nm(data.geometry, end_index, start_index_next_port)
+    
+                timelapse_from_previous_port = PathCalculations.timelapseAlongPath(data.bs_ts, end_index_previous_port, start_index)
+                _, distance_from_previous_port = PathCalculations.distanceAlongPath_nm(data.geometry, end_index_previous_port, start_index)
+
+                new_row = {
+                        'date' : list(set(group.bs_ts.dt.date)),
+                        'boatName': boatName,
+                        'mmsi' : 'num',
+                        'portAfter': str(portAfter),
+                        'portBefore': str(portBefore),
+                        'ts_in': ts_in,
+                        'ts_out': ts_out,
+                        'timeTo' : timelapse_to_next_port,
+                        'distTo' : distance_to_next_port,
+                        #'arrival' : arrival_in_next_port,
+                        #'timeFrom' : timelapse_from_previous_port,
+                        #'distFrom' : distance_from_previous_port,
+                        'segment_id': segment_id
+                }
+                new_rows.append(new_row)
+                count_glba_visits += 1
+
+        if new_rows:
+            visit_table = pd.concat([visit_table, pd.DataFrame(new_rows)], ignore_index=True)
+
+        merged = BoatsData.merge_ais_claa_data(visit_table, BoatsData.CLAA_DATA)
+        
+        visit_count_table = visit_table.boatName.value_counts()
+        popular_next_ports_table = visit_table.portAfter.value_counts()
+        
+        #* For 2023 AIS data, generate an accurate (cross checked) table of 
+        # next port of call (including ‘at sea’), 
+        # toTime, toDist, fromTime, fromDist
+        # CLAA attributes where applicable
+        # Dataframe will have 258 rows of data 
+        # corresponding to each ship visit to the park. 
+        
+        return visit_table.sort_values(by='ts_in').reset_index(), visit_count_table, popular_next_ports_table, merged, count_glba_visits
+
+    def import_claa_data(self):
+        claa_df = pd.read_csv(BoatsData.CLAA_DATA_FILEPATH)
+        claa_df['year'] = pd.to_datetime(claa_df['date']).dt.year
+        claa_df = claa_df[['date','year','boatName','portName','nextPort','ts_in','ts_out']]
+        self.claa_data = claa_df
+    
+    @staticmethod
+    def merge_ais_claa_data(data, claa_df):
+        data['date'] = pd.to_datetime(data['date'].apply(lambda x: x[0] if isinstance(x, list) else x))
+        #data['date'] = pd.to_datetime(data['date'])
+        claa_df['date'] = pd.to_datetime(claa_df['date'])
+        merged = data.merge(claa_df,
+                            on=['boatName', 'date'], how='inner', suffixes=('_ais', '_claa'))
+        return merged[['date', 'boatName',
+                       'portAfter', 'nextPort', 'portBefore', #'prevPort',
+                       'ts_in_ais', 'ts_in_claa', 'ts_out_ais', 'ts_out_claa']]
+
+    @staticmethod
+    def filter_claa_data_by_year(data, year):
+        return data[data['year'] == year]
+    
+    @staticmethod
+    def filter_claa_data_by_port(data, port):
+        return data[data['portName'] == port] 
+
+
 

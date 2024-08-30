@@ -1,5 +1,7 @@
 import pandas as pd
 from AIS import AIS
+from Slicer import Slicer
+from Geoprocessor import Geoprocessor
 
 
 import os
@@ -7,7 +9,7 @@ import secrets
 import time
 import matplotlib.pyplot as plt
 from datetime import datetime
-from pathcalculations import *
+from PathCalculations import *
 import pytz
 
 
@@ -45,8 +47,13 @@ class Cruise(AIS):
     
     def __init__(self, cruiseID):
         super().__init__()
-        self.data = pd.DataFrame(columns=['lat', 'lon', 'time'])
+        self.data = gpd.GeoDataFrame(columns=['lat', 'lon', 'bs_ts', 'geometry'], geometry = 'geometry') #use gdf as primary data storage, add Geometries and other attributes during data import.
+        self.df_list = []
+
         self.cruiseID = cruiseID
+        #self.slicer = Slicer()
+
+
         self.boatName = None
 
         self.geoprocessor = None
@@ -55,7 +62,6 @@ class Cruise(AIS):
         self.days = []
         self.time_records = []
 
-        self.gdf = None # geodataframe version of cruiseData
         self.thinned = None # duplicate of cruiseData, with a low resolution the result of thinning
         self.portsOfCall = None # List of ports visited and on which days
         self.timestamps_of_interest = None # timestamps of points logged within dock bufffers
@@ -68,20 +74,36 @@ class Cruise(AIS):
         return self.data.to_string()
 
     ##### MAIN IMPORT FUNCTIONALITIES #####
+
+    def _init_geodata(self, group):
+        return Geoprocessor.dataToGeodata(group)
     
     def addGroup(self, group):
         """Adds a full group pd DataFrame object to the Cruise instance 
            on which the method is called
         """
-        self.data = pd.concat([self.data, group], ignore_index=True)
+        #self.df_list.append(self._init_geodata(group))
+        self.data = pd.concat([self.data, self._init_geodata(group)], ignore_index=True) #converts and adds new data to end of existing geodata
         self.days.append(group['bs_ts'][0].date())
-    
+
+    def concatenateDataList(self):
+        """converts data storage from list to big DataFrame to avoid costly copying
+        """
+        self.data = pd.concat([self.data] + self.df_list, ignore_index=True)
+        self.df_list = [] # reset DF's since storage is now in self.data after import
+
     def addCruiseToShapfile(self, shapefile):
         """adds a cruise's geodataframe to a feature in an ESRI shapefile. This generally would come after the cropping and conversion from point to line data
         """
-        self.dataToGeodata()
+        # self.dataToGeodata()
         self.assignPorts()
         port = self.getPortAfterGlacierBay()
+
+
+
+
+
+
 
     ##### GEOSPATIAL METHODS #####
 
@@ -91,76 +113,6 @@ class Cruise(AIS):
     from geopy.distance import geodesic
 
     from shapely.ops import nearest_points
-
-    def dataToGeodata(self): # Convert self.data to a geodataframe
-        """Converts a populated self.data to a geodataframe and stores it as self.gdf
-        """
-        if self.gdf is None:
-            geometry = [Point(xy) for xy in zip(self.data['lon'], self.data['lat'])]
-            #points_gdf = gpd.GeoDataFrame(data, geometry=gpd.points_from_xy(data['longitude'], data['latitude'])) 
-            # ^^ another way to do it
-            gdf = gpd.GeoDataFrame(self.data, geometry=geometry)
-            gdf.set_crs(epsg=4326, inplace=True)
-            self.gdf = gdf
-        else:
-            pass
-
-    def clipBoundary(self, boundary):
-        """writes shapefile of cruiseData, using the boundary polygon to subset the geodataframe
-        """
-        if not self.gdf_clipped:
-            geometry = [Point(xy) for xy in zip(self.data['lon'], self.data['lat'])]
-            # Convert DataFrame to GeoDataFrame
-            gdf = gpd.GeoDataFrame(self.data, geometry=geometry)
-            # Set CRS to WGS 84 (EPSG:4326)
-            gdf.set_crs(epsg=4326, inplace=True)
-            # Subset the GeoDataFrame by the boundary
-            gdf_sub = gdf[gdf.geometry.within(boundary.geometry.unary_union)]
-            self.gdf_clipped = gdf_sub
-        else:
-            print('error in clipboundary')
-
-    def toPointShapefile_og(self, filepath):
-        """Converts a Cruise object to a shapefile and writes it to filepath.
-           filepath takes .shp extension
-        """
-        # Create geometry column from latitude and longitude columns
-        geometry = [Point(xy) for xy in zip(self.data['lon'], self.data['lat'])]
-        # Convert DataFrame to GeoDataFrame
-        #print(cruiseData.data)
-        gdf = gpd.GeoDataFrame(self.data, geometry=geometry)
-        #print(gdf)
-        # Set CRS to WGS 84 (EPSG:4326)
-        gdf.set_crs(epsg=4326, inplace=True)
-        gdf.to_file(os.path.join(os.getcwd(), filepath))
-        self.gdf = gdf
-    
-    def toLineShapefile(self, filepath, start_index, end_index):
-        print(self.gdf)
-        if start_index and end_index:
-            line = LineString(self.gdf.loc[start_index:end_index].geometry.values)
-            distance = PathCalculations.distanceAlongPath(self.gdf.geometry, start_index, end_index)[1]
-            time = PathCalculations.timelapseAlongPath(self.gdf.bs_ts ,start_index, end_index)
-
-        else: 
-            line = LineString(self.gdf.geometry.values)
-            distance = PathCalculations.distanceAlongPath(self.gdf.geometry, self.gdf.index[0], self.gdf.index[-1])[1]
-            time = PathCalculations.timelapseAlongPath(self.gdf.bs_ts, self.gdf.index[0], self.gdf.index[-1])
-
-        new_row = {
-            'cruiseID': self.cruiseID,
-            'boatName': self.boatName,
-            'startDate': str(min(self.days)),
-            'endDate': str(max(self.days)),
-            'departGLBA': str(self.getLastTimestampInGlacierBay()),
-            'afterGLBA': self.getPortAfterGlacierBay(),
-            'distance' : distance,
-            'time' : time
-        }
-        # Create a new GeoDataFrame with the new row
-        line_gdf = gpd.GeoDataFrame([new_row], geometry=[line], crs=self.gdf.crs)
-        line_gdf.set_crs(epsg=4326, inplace=True)
-        line_gdf.to_file(os.path.join(os.getcwd(), filepath), driver='ESRI Shapefile')
 
     def appendToLineShapefile(self, filepath, start_index, end_index):
         """adds the self.gdf entries to the shapefile at filepath. if the file doesn't exist, then creates one.
@@ -251,57 +203,7 @@ class Cruise(AIS):
             print("No intersecting points found.")
 
         return next_index
-     
-    def toPointShapefile(self, filepath):
-        # Create geometries from lon and lat
-        geometry = [Point(xy) for xy in zip(self.data['lon'], self.data['lat'])]
-        gdf = gpd.GeoDataFrame(self.data, geometry=geometry)
-        gdf.set_crs(epsg=4326, inplace=True)
-        
-        # Add additional information
-        gdf['cruiseID'] = self.cruiseID
-        gdf['boatName'] = self.boatName
-        gdf['startDate'] = str(min(self.days))
-        gdf['endDate'] = str(max(self.days))
-        gdf['departGLBA'] = str(self.getLastTimestampInGlacierBay())
-        gdf['afterGLBA'] = self.getPortAfterGlacierBay()
-
-        gdf.to_file(os.path.join(os.getcwd(), filepath), driver='ESRI Shapefile')
-        self.gdf = gdf
-
-    def appendToPointShapefile(self, filepath):
-        """Adds the self.gdf entries to the shapefile at filepath. If the file doesn't exist, then creates one."""
-        full_path = os.path.join(os.getcwd(), filepath)
-        
-        # Create geometries from lon and lat
-        geometry = [Point(xy) for xy in zip(self.data['lon'], self.data['lat'])]
-        gdf = gpd.GeoDataFrame(self.data[['bs_ts', 'name', 'sog', 'cog']], geometry=geometry)
-        gdf.set_crs(epsg=4326, inplace=True)
-        
-        # Add additional information
-        gdf['cruiseID'] = self.cruiseID
-        gdf['boatName'] = self.boatName
-        gdf['startDate'] = str(min(self.days))
-        gdf['endDate'] = str(max(self.days))
-        gdf['departGLBA'] = str(self.getLastTimestampInGlacierBay())
-        gdf['afterGLBA'] = self.getPortAfterGlacierBay()
-
-        if not os.path.exists(full_path):
-            gdf.to_file(full_path, driver='ESRI Shapefile')
-        else:
-            existing_gdf = gpd.read_file(full_path)
-            
-            # Convert date columns to datetime format
-            existing_gdf['startDate'] = pd.to_datetime(existing_gdf['startDate'])
-            existing_gdf['endDate'] = pd.to_datetime(existing_gdf['endDate'])
-            existing_gdf['departGLBA'] = pd.to_datetime(existing_gdf['departGLBA'])
-            
-            # Append the new GeoDataFrame to the existing one
-            combined_gdf = pd.concat([existing_gdf, gdf], ignore_index=True)
-            
-            # Write the combined GeoDataFrame back to the shapefile
-            combined_gdf.to_file(full_path, driver='ESRI Shapefile')
-    
+   
     ##### BOOLEAN METHODS #####
 
     ##### DATA MANAGEMENT METHODS #####
@@ -311,52 +213,8 @@ class Cruise(AIS):
             self.boatName = self.gdf.name[0]
         else:
             print('error in assignboatname()')
-    
-    def subset(self, start_index, end_index):
-        """returns a subset of the geodataframe
-        """
-        print(f'start_index: {start_index}, end_index: {end_index}')
-        return self.gdf.iloc[start_index:end_index]
 
     ##### PORT OF CALL & ITINERARY ANALYSIS #####
-
-    def assignPorts(self):
-        """Adds columns that specify the location as either within a port or in transit between ports.
-        Port location is determined by containment of an AIS point within a 2km circular buffer around ports of interest.
-        Adds columns: 'port', 'status' (either 'inPort' or 'inTransit'), and 'next_port' to the DataFrame.
-        """
-        search_area = Cruise.DOCK_BUFFERS
-        search_area = search_area.to_crs(4326)
-        self.gdf['port'] = None
-        self.gdf.at[self.gdf.index[0], 'port'] = 'StartOfCruise'
-        self.gdf.at[self.gdf.index[-1], 'port'] = 'EndOfCruise' # default for now since we don't have many Seattle/CAN cruises
-        self.gdf['status'] = 'inTransit'  # Default to 'inTransit'
-                
-        self.gdf.at[self.gdf.index[0], 'status'] = 'inPort'
-        self.gdf.at[self.gdf.index[-1], 'status'] = 'inPort'
-
-        self.gdf['next_port'] = None
-        
-        # Iterate over all ports in the search area
-        for _, buffer in search_area.iterrows():
-            # Check if any point intersects with this buffer
-            intersecting_points1 = self.gdf[self.gdf.geometry.intersects(buffer.geometry)]
-            intersecting_points2 = self.gdf[(self.gdf.sog == 0) | (self.gdf.nav_status == 'Moored')]
-            intersecting_indices = intersecting_points1.index.intersection(intersecting_points2.index)
-
-            if len(intersecting_indices) > 0:
-                self.gdf.loc[intersecting_indices, 'port'] = buffer['name']
-                self.gdf.loc[intersecting_indices, 'status'] = 'inPort'
-                #print('populating column for', buffer['name'])
-                #print(f'There were {len(intersecting_points1)} points within the geofence and  {len(intersecting_points2)} moored or at rest, populating {len(intersecting_indices)} entries in the column')
-            else:
-                pass
-                #print('no entries for', buffer['name'])
-
-        # Create a new column with backward filled values
-        self.gdf['filled_port'] = self.gdf['port'].fillna(method='bfill')
-        # Update NaN values in the original 'port' column to be 'to' + the filled value
-        self.gdf['next_port'] = self.gdf.apply(lambda row: f"to{row['filled_port']}" if pd.isna(row['port']) else row['port'], axis=1)
 
     def initializeItinerary(self):
         """Initializes the itinerary dictionary for the cruise, storing port information and directionality.
@@ -516,19 +374,7 @@ class Cruise(AIS):
         else:
             print('error in get ports of call')
 
-    def getNextPort(self, current_index):
-        """Get the next port after the given index in the itinerary."""
-        for i in range(current_index + 1, len(self.gdf)):
-            if self.gdf.loc[i, 'port'] is not None:
-                return self.gdf.loc[i, 'port'], i
-        return 'Error'
 
-    def getPreviousPort(self, current_index):
-        """Get the previous port before the given index in the itinerary."""
-        for i in range(current_index - 1, -1, -1):
-            if self.gdf.loc[i, 'port'] is not None:
-                return self.gdf.loc[i, 'port'], i
-        return 'Error'
 
     def getNextPorts(self, timestamp):
         """Returns tuple of current and next destinations.
