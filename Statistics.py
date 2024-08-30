@@ -27,3 +27,11 @@ class Statistics():
         stats.columns = ['_'.join(col).strip() if col[1] else col[0] for col in stats.columns]
         stats.rename(columns={f'{group_field}_': f'{group_field}'}, inplace=True)
         return stats
+    
+    def summary_table2(DataFrame, group_field : str, stats_fields : list, stats_type : list):
+        agg_dict = {field: stats_type for field in stats_fields}
+        stats = DataFrame.groupby(group_field).agg(agg_dict).reset_index()
+
+        stats.columns = ['_'.join(col).strip() if col[1] else col[0] for col in stats.columns]
+        stats.rename(columns={f'{group_field}_': f'{group_field}'}, inplace=True)
+        return stats

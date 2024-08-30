@@ -1,166 +1,113 @@
-import folium
-import pandas as pd
+
+from BoatsData import BoatsData
+
 import geopandas as gpd
-from geopy.distance import distance
-from shapely.geometry import Point, LineString
-from app import *
-import random
-import colorsys
+from shapely.geometry import Point
+import rasterio
 import numpy as np
+from rasterio.features import rasterize
+from rasterio.transform import from_origin
+from rasterio.plot import show
 
-###### SETUP FOLIUM WITH GLACIER BAY BOUNDARY ######
 
-# Read the shapefile
-glba = gpd.read_file('./shapes/nps_boundary.shp')
-glba = glba[glba.PARKNAME == 'Glacier Bay']
-glba = glba.to_crs(epsg=4326)
+import numpy as np
+import matplotlib.pyplot as plt
+import rasterio
+from shapely.geometry import box
+from rasterio.plot import show
 
-for col in glba.columns:
-    if pd.api.types.is_datetime64_any_dtype(glba[col]):
-        glba[col] = glba[col].astype(str)
 
-center = (58.58566454530601, -136.04670618412524)
-m = folium.Map(location=center, zoom_start=9)
+class Mapper:
+    def __init__(self, data):
+        self.data = data
 
-# Add the GeoDataFrame to the map
-folium.GeoJson(glba).add_to(m)
+    def writeRasters(self, group_field, plot_field):
+        gdf = self.data.to_crs(6394)
 
-########## HELPER FUNCTIONS #######
-
-# Function to convert a DataFrame to a GeoDataFrame
-
-def cruiseDataToGeodataframe(cruiseID, cruiseData, lat_col, lon_col):
-    """Converts a cruiseData object to a point geodataframe and returns geodataframe to be saved as a shapefile.
-    """
-    # Create geometry column from latitude and longitude columns
-    geometry = [Point(xy) for xy in zip(cruiseData.data[lon_col], cruiseData.data[lat_col])]
-    # Convert DataFrame to GeoDataFrame
-    cruiseData.data['cruiseID'] = cruiseID
-    #print(cruiseData.data)
-    gdf = gpd.GeoDataFrame(cruiseData.data, geometry=geometry)
-    #print(gdf)
-    # Set CRS to WGS 84 (EPSG:4326)
-    gdf.set_crs(epsg=4326, inplace=True)
-    return gdf
-
-def cruiseDataToPolyline(cruiseData):
-    gdf_points = gpd.GeoDataFrame(
-        cruiseData.data,
-        geometry = gpd.points_from_xy(cruiseData.data['lon'], cruiseData.data['lat'])
-    )
-    line = LineString(gdf_points.geometry.tolist())
-    # Create a GeoDataFrame for the polyline
-    gdf_line = gpd.GeoDataFrame(
-        {'cruiseID': [gdf_points['cruiseID'].iloc[0]]},  # Inherit an attribute from the first point
-        geometry=[line]
-    )
-    #gdf_line.set_crs(epsg=4326, inplace=True)
-    return gdf_line
-
-######## BEGIN WORKING WITH AIS CRUISE DATA 2023 ############
-
-a = App(r'/Users/Graham/cruise/small_ais_data')
-#a = App(r'/Users/Graham/cruise/test_data')
-
-gdfs = []
-gdfs_line = []
-
-for boat_name, boat_data in a.boatsData.boatsDataDictionary.items():
-            for cruise_id, cruise_data in boat_data.cruisesDataDictionary.items():
-                cruiseGeoData = cruiseDataToGeodataframe(cruise_id, cruise_data, 'lat', 'lon')
-                cruiseLine = cruiseDataToPolyline(cruise_data)
-                gdfs.append(cruiseGeoData)
-                gdfs_line.append(cruiseLine)
-                #cruiseGeoData.to_file(os.path.join(r'/Users/Graham/cruise/cruiseGeodata', cruise_id), driver='ESRI Shapefile')
-
-for gdf in gdfs:
-    for col in gdf.columns:
-        if pd.api.types.is_datetime64_any_dtype(gdf[col]):
-            gdf[col] = gdf[col].astype(str)
-    #folium.GeoJson(gdf).add_to(m)
-    print(f'adding gdf: {gdf.cruiseID}')
-    break
-
-for gdf_line in gdfs_line:
-    gdf_line.set_crs(epsg=4326, inplace=True)
-
-def generate_distinguishable_colors(num_colors):
-    """
-    Generate a list of distinguishable colors.
-    Args: num_colors (int): Number of unique colors needed.
-    Returns: List of color codes in RGB format.
-    """
-    colors = []
-    for i in range(num_colors):
-        hue = i / float(num_colors)
-        rgb = colorsys.hsv_to_rgb(hue, 0.8, 0.8)  # Use a constant saturation and value
-        rgb = tuple(int(255 * x) for x in rgb)
-        colors.append('#{:02x}{:02x}{:02x}'.format(*rgb))
-    return colors
-
-def generate_color_mapping(gdf, id_column):
-    """
-    Generate a dictionary mapping unique IDs to unique RGB color codes.
-    Args: gdf (GeoDataFrame): GeoDataFrame containing LineString geometries and a unique ID column.
-    id_column (str): Column name containing unique IDs.
-    Returns: Dictionary with IDs as keys and unique RGB color codes as values.
-    """
-    unique_ids = gdf[id_column].unique() 
-    colors = generate_distinguishable_colors(len(unique_ids))
-    color_mapping = {cruise_id: color for cruise_id, color in zip(unique_ids, colors)}
-    return color_mapping
-
-def get_color(category):
-    return color_dict.get(category, 'black')  # Default to 'black' if category not found
-
-def plot_lines_with_folium(gdf, id_column, color_mapping):
-    """
-    Plot lines from a GeoDataFrame on a Folium map with colors based on unique ID.
-    
-    Args:
-    gdf (GeoDataFrame): GeoDataFrame containing LineString geometries.
-    id_column (str): Column name containing unique IDs.
-    color_mapping (dict): Dictionary mapping IDs to unique RGB color codes.
-    
-    Returns:
-    folium.Map: Folium map with plotted lines.
-    """
-    # Initialize the folium map centered around the first LineString's midpoint
-    center = (58.58566454530601, -136.04670618412524)  # Adjust as needed for your data
-    m = folium.Map(location=center, zoom_start=10)
-    
-    # Iterate over the GeoDataFrame and add each LineString to the map
-    for _, row in gdf.iterrows():
-        # Get the color for the current row's ID
-        color = color_mapping[row[id_column]]
+        ##### FILTER #####
+        def update_grids(geom, value):
+            x, y = geom.xy
+            row = min(max(int((y[0] - ymin) / cell_size), 0), height - 1)
+            col = min(max(int((x[0] - xmin) / cell_size), 0), width - 1)
         
-        # Create a folium PolyLine and add it to the map
-        folium.PolyLine(
-            locations=[(coord[1], coord[0]) for coord in row['geometry'].coords],
-            color=color,
-            weight=5  # Adjust the weight as needed
-        ).add_to(m)
+            sum_grid[row, col] += value
+            count_grid[row, col] += 1
+
+        #####################
+
+        cell_size = 500  # meters
+
+        grouped = gdf.groupby(group_field)
+
+        rasters = {}
+
+        for key, group in grouped:
+            df = group[group[group_field] == key]
+
+            #print(df.sog.mean())
+
+            xmin, ymin, xmax, ymax = df.total_bounds
+            width = int((xmax - xmin) / cell_size)
+            height = int((ymax - ymin) / cell_size)
+
+            sum_grid = np.zeros((height, width), dtype=np.float64)
+            count_grid = np.zeros((height, width), dtype=np.int64)
+
+            df.apply(lambda row: update_grids(row.geometry, row[plot_field]), axis=1)
+            average_grid = np.divide(sum_grid, count_grid, out=np.zeros_like(sum_grid), where=count_grid != 0)
+            transform = from_origin(xmin, ymin, cell_size, -cell_size)
+            key_name = key.replace(' ','_')
+            output_raster = f'./products/rasters/mean_{plot_field}_raster_{cell_size}m_glba_to_{key_name}_cruises.tif'
+            #print(f'writing {output_raster}')
+        
+            with rasterio.open(
+                    output_raster,
+                    'w',
+                    driver='GTiff',
+                    height=height,
+                    width=width,
+                    count=1,
+                    dtype=average_grid.dtype,
+                    crs=gdf.crs,
+                    transform=transform
+                ) as dst:
+                dst.write(average_grid, 1)
+
+            extent = [xmin, xmax, ymin, ymax]
+
+            rasters[key] = (group_field, plot_field, output_raster, cell_size, extent)
+
+        return rasters
     
-    return m
+    @staticmethod
+    def plotRaster(key, rasters_dict):
+        vector_data = BoatsData.ALASKA_COASTLINE.to_crs(6394)
 
-# Example usage
+        raster_file = rasters_dict[key][2]
+        extent = rasters_dict[key][4]
+        #print(f"Extent: {extent}")
 
-# Create a GeoDataFrame
-data = {
-    'geometry' : [gdf_line.geometry[0] for gdf_line in gdfs_line],
-    'cruiseID' : [gdf_line.cruiseID[0] for gdf_line in gdfs_line]
-}
+        with rasterio.open(raster_file) as src:
+            #img = np.flipud(src.read(1))  # Read and flip the image
+            img = src.read(1)
+            transform = src.transform
+            crs = src.crs
 
-gdf_lines = gpd.GeoDataFrame(data, crs="EPSG:4326")
-# Assuming you have a GeoDataFrame 'gdf_lines' with a column 'cruiseID'
+            fig, ax = plt.subplots(figsize=(10, 10))
 
-color_mapping = generate_color_mapping(gdf_lines, 'cruiseID')
+            # Display raster data
+            show(img, cmap='inferno', ax=ax, transform=transform, extent=extent)
 
-# Plot lines with folium
-m = plot_lines_with_folium(gdf_lines, 'cruiseID', color_mapping)
+            vector_data = vector_data.to_crs(crs)
+            vector_data.boundary.plot(ax=ax, edgecolor='white', linewidth=1)  # Overlay vector boundaries
 
-# Optionally, save the map to an HTML file
-m.save('./maps/map_glba.html')
+            ax.set_xlim([extent[0], extent[1]])
+            ax.set_ylim([extent[2], extent[3]])
+            cbar = plt.colorbar(ax.images[0], ax=ax, orientation='vertical')
+            cbar.set_label('Mean SOG (kt)')
+            ax.set_xlabel('Longitude')
+            ax.set_ylabel('Latitude')
+            ax.set_title(f"Mean SOG GLBA to {key}")
 
-
-
+            # Show the plot
+            plt.show()

@@ -35,3 +35,9 @@ class PathCalculations:
         time1 = timestamps.iloc[start_index]
         time2 = timestamps.iloc[end_index]
         return round((time2-time1).seconds/3600, 2) # time in hours
+    
+    def calculate_sinuosity(data, start_index, end_index):
+        actual_distance = PathCalculations.distanceAlongPath_nm(data.geometry, start_index, end_index)[1]
+        straight_line_distance = data.geometry.iloc[start_index].distance(data.geometry.iloc[end_index])
+        return actual_distance / straight_line_distance if straight_line_distance > 0 else 1.0
+
