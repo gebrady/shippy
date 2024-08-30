@@ -100,13 +100,20 @@ class BoatsData:
 
                 max_speed = sub_between_glba_next_port['sog'].max()
 
-                arrival_in_next_port = data.bs_ts.iloc[start_index_next_port]
-
-                timelapse_to_next_port = PathCalculations.timelapseAlongPath(data.bs_ts, end_index, start_index_next_port)
-                _, distance_to_next_port = PathCalculations.distanceAlongPath_nm(data.geometry, end_index, start_index_next_port)
+                try:
+                    arrival_in_next_port = data.bs_ts.iloc[start_index_next_port]
+                    timelapse_to_next_port = PathCalculations.timelapseAlongPath(data.bs_ts, end_index, start_index_next_port)
+                    _, distance_to_next_port = PathCalculations.distanceAlongPath_nm(data.geometry, end_index, start_index_next_port)
     
-                timelapse_from_previous_port = PathCalculations.timelapseAlongPath(data.bs_ts, end_index_previous_port, start_index)
-                _, distance_from_previous_port = PathCalculations.distanceAlongPath_nm(data.geometry, end_index_previous_port, start_index)
+                    timelapse_from_previous_port = PathCalculations.timelapseAlongPath(data.bs_ts, end_index_previous_port, start_index)
+                    _, distance_from_previous_port = PathCalculations.distanceAlongPath_nm(data.geometry, end_index_previous_port, start_index)
+                except IndexError:
+                    print(f"Warning: start_index_next_port {start_index_next_port} is out of bounds. Assigning default values for {boatName}.")
+                    arrival_in_next_port = None  # Assigning None or a default value, e.g., pd.Timestamp('NaT')
+                    timelapse_to_next_port = None
+                    distance_to_next_port = None
+                    timelapse_from_previous_port = None
+                    distance_from_previous_port = None
 
                 new_row = {
                         'date' : list(set(group.bs_ts.dt.date)),
