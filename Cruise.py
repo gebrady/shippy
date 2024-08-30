@@ -14,6 +14,8 @@ import pytz
 
 
 class Cruise(AIS):
+    # Determines the threshold to determine whether a group should be included in this cruise
+    TIMELAPSE_THRESHOLD = pd.Timedelta(hours = 10)
 
     CRUISE_DOCKS = {
         'Juneau': {'name': 'Juneau Cruise Ship Terminal', 'coordinates': (-134.4197, 58.3019)},
@@ -75,6 +77,7 @@ class Cruise(AIS):
         #self.df_list.append(self._init_geodata(group))
         self.data = pd.concat([self.data, self._init_geodata(group)], ignore_index=True) #converts and adds new data to end of existing geodata
         self.days.append(group['bs_ts'][0].date())
+        self.data['cruise_id'] = cruiseID #update cruiseID
 
     def concatenateDataList(self):
         """converts data storage from list to big DataFrame to avoid costly copying

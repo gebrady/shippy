@@ -57,7 +57,7 @@ class BoatsData:
     def flatten(self):
         df = pd.DataFrame()
         for _, boat_data in self.boatsDataDictionary.items():
-            df = pd.concat([df, boat_data.flattenCruises()], ignore_index = True)
+            df = pd.concat([df, boat_data.flattenedCruises()], ignore_index = True)
         return df
 
     def run_glba_workflow(self):
