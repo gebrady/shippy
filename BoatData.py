@@ -12,8 +12,6 @@ from datetime import datetime
 from PathCalculations import PathCalculations
 import pytz
 
-
-
 class BoatData(AIS):
     GLBA_BOUNDARY = gpd.read_file(r'./data/shapes/port_GLBA.shp')
     GLBA_BOUNDARY = GLBA_BOUNDARY.set_crs(epsg=4326)
@@ -30,6 +28,17 @@ class BoatData(AIS):
         for key, value in self.cruisesDataDictionary.items():
             string = string + str(key) + ": " + str(value) + '\n'
         return string
+    
+    #### READING DATA ####
+
+    def flattenCruises(self) -> gpd.GeoDataFrame:
+        """returns a summary of all the data together from self.boatData for the season.
+        """
+        df = gpd.GeoDataFrame()
+        for cruise_id, cruise_data in self.cruisesDataDictionary.items():
+            df = pd.concat([df, cruise_data.data], ignore_index=True)
+        #print('here is the flattened set of cruises')
+        return df   
     
     #### IMPORTING DATA ####
 

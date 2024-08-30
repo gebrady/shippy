@@ -20,12 +20,12 @@ class CruiseSorter:
         self.previousCruise = None # Placeholder for last Cruise edited
         self.currentCruise = None
 
-    def convert_to_segments(self):
+    def convert_to_segments(self): # Not called
         """generates a Segments object (doubly linked list with SegmentNodes of AIS data). 
            Each state change connects the nodes: inPort, inTransit, inPort, etc.
            Use for flattening and resorting data into a cruise itinerary format.
         """
-        big_df = self.flattenCruises() # if needed
+        # big_df = self.flattenCruises() # if needed
         big_df.set_geometry('geometry')
         big_df = PortManager.populate_status_and_ports(big_df) # assigns rows as either inTransit/inPort and with geofence Port name or AtSea
         big_df = PortManager.identify_status_changes(big_df)
@@ -112,7 +112,7 @@ class CruiseSorter:
         self.boatData.cruisesDataDictionary[cruise_id] = Cruise(cruise_id)
         self.currentCruise = self.boatData.cruisesDataDictionary[cruise_id]
     
-    def predictCruiseID(self, unassigned_group) -> str:
+    def predictCruiseID(self, unassigned_group) -> str: # not called
         for _, cruise_data in self.boatData.items():
             if cruise_data.data.name.contains(unassigned_group.name.mode()[0]).any():
                 self.currentCruise = cruise_data
@@ -123,16 +123,7 @@ class CruiseSorter:
         
     ######## ADDITIONAL METHODS ###########
 
-    def flattenCruises(self) -> gpd.GeoDataFrame:
-        """returns a summary of all the data together from self.boatData for the season.
-        """
-        df = gpd.GeoDataFrame()
-        for cruise_id, cruise_data in self.boatData.cruisesDataDictionary.items():
-            df = pd.concat([df, cruise_data.data], ignore_index=True)
-        #print('here is the flattened set of cruises')
-        return df   
-
-    def get_cruise_match(self, group):
+    def get_cruise_match(self, group): # not called
         for cruise_id, cruise_data in self.boatData.cruisesDataDictionary.items():
             if self.is_matching_cruise(group, cruise_data):
                 return cruise_data
