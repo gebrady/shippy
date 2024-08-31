@@ -77,7 +77,7 @@ class Cruise(AIS):
         #self.df_list.append(self._init_geodata(group))
         self.data = pd.concat([self.data, self._init_geodata(group)], ignore_index=True) #converts and adds new data to end of existing geodata
         self.days.append(group['bs_ts'][0].date())
-        self.data['cruise_id'] = cruiseID #update cruiseID
+        self.data['cruise_id'] = self.cruiseID #update cruiseID
 
     def concatenateDataList(self):
         """converts data storage from list to big DataFrame to avoid costly copying
@@ -99,7 +99,7 @@ class Cruise(AIS):
         max_timestamp = self.data['bs_ts'].max()
         min_timestamp = group['bs_ts'].min()
 
-        if (min_timestamp - max_timestamp) <= cls.TIMELAPSE_THRESHOLD:
+        if (min_timestamp - max_timestamp) <= Cruise.TIMELAPSE_THRESHOLD:
         #if unassigned_group.name.mode()[0] == cruise.data.name.mode()[0]:
             return True
         return False

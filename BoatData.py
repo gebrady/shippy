@@ -80,7 +80,7 @@ class BoatData(AIS):
         
         # DEFAULT TO CREATING AND POPULATING AN EMPTY CRUISE
         newCruise = self._incrementCruisesDataDictionary()
-        self._addGroupToCruise(self.newCruise, group)
+        self._addGroupToCruise(newCruise, group)
         print(f'created new cruise for this: {newCruise.cruiseID}')
         return
 
