@@ -7,7 +7,7 @@ import os
 from PathCalculations import PathCalculations
 
 class Geoprocessor():
-    GLBA_BOUNDARY = gpd.read_file(r'./shapes/GlacierBayGeofence.shp')
+    GLBA_BOUNDARY = gpd.read_file(r'./data/shapes/GlacierBayGeofence.shp')
     GLBA_BOUNDARY = GLBA_BOUNDARY.set_crs(epsg=4326)
     PROJECT_EPSG = 4326
 
@@ -124,17 +124,6 @@ class Geoprocessor():
     @staticmethod
     def aggregate(gdf_list):
         return pd.concat(gdf_list, ignore_index=True)
-
-
-
-
-
-
-
-
-
-
-
 
 ########## SCRATCH AREA ######################
 

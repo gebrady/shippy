@@ -1,4 +1,4 @@
-a = App(r'./ais_data')
+a = App(r'./data/ais_data')
 
 cruises_shp_filepath = r'./data/cruises_shp/processed_cruises.shp'
 

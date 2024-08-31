@@ -253,9 +253,9 @@ big_df = pd.concat(dfs, ignore_index=True)
 
 #output statistics for easy cleanup
 grouped = big_df.groupby('boatName').size().reset_index(name='count')
-grouped.to_csv('./calendar/allyears_allports_claa_groupstats.csv', index=False)
+grouped.to_csv('./data/calendar/allyears_allports_claa_groupstats.csv', index=False)
 
-big_df.to_csv('./calendar/allyears_allports_claa.csv')
+big_df.to_csv('./data/calendar/allyears_allports_claa.csv')
 
 
 

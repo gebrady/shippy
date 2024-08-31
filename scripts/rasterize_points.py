@@ -44,7 +44,7 @@ average_grid = np.divide(sum_grid, count_grid, out=np.zeros_like(sum_grid), wher
 transform = from_origin(xmin, ymin, cell_size, -cell_size)
 
 # Write the average values to a new raster file
-output_raster = './cruise_rasters/mean_sog_raster_250m.tif'
+output_raster = './out/cruise_rasters/mean_sog_raster_250m.tif'
 with rasterio.open(
     output_raster,
     'w',
