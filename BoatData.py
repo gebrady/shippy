@@ -1,5 +1,4 @@
 from AIS import AIS
-from CruiseSorter import CruiseSorter
 from Geoprocessor import Geoprocessor
 from Slicer import Slicer
 import pandas as pd

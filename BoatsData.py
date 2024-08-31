@@ -68,7 +68,7 @@ class BoatsData:
         filtered_data = []
         for boatName, boatData in self.boatsDataDictionary.items():
             print(f'processing {boatName}')
-            data = boatData.flattenCruises()
+            data = boatData.flattenedCruises()
 
             data = PortManager.populate_status_and_ports(data)
             data = PortManager.identify_status_changes(data)

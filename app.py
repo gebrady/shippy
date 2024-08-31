@@ -1,7 +1,6 @@
 # Main application class
 #from ship import *
 #from BoatData import BoatData
-from CruiseSorter import CruiseSorter
 from Cruise import Cruise
 from BoatData import BoatData
 from BoatsData import BoatsData
