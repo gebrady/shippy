@@ -15,7 +15,6 @@ import pytz
 
 
 class BoatData(AIS):
-    #TIME_THRESHOLD = pd.Timedelta(days=1) #if entry appears on next day, belongs to same cruise
     GLBA_BOUNDARY = gpd.read_file(r'./data/shapes/port_GLBA.shp')
     GLBA_BOUNDARY = GLBA_BOUNDARY.set_crs(epsg=4326)
 

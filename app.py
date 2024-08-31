@@ -28,12 +28,7 @@ class App:
         self.boatsData = BoatsData()  # Initialize BoatsData instance
         self.rowsParsedCount = 0
         self.populateBoatsData(dataFolder)  # Populate boatsData with data from CSV files
-
-        # for _, boat_data in self.boatsData.boatsDataDictionary.items():
-        #     for _, cruise_data in boat_data.cruisesDataDictionary.items():
-        #         cruise_data.geoprocessor = Geoprocessor(cruise_data.data)
-
-        self.boatsData.initializeStatistics()
+        # self.boatsData.initializeStatistics()
 
 
 
@@ -66,10 +61,6 @@ class App:
                     self.boatsData.parseRows(rows)  # Parse rows into boatsData
                     self.rowsParsedCount += len(rows)
                     #print(f'Finished parsing file: {f}')
-        #print('converting df_lists to big_gdf format')
-        #for _, boat_data in self.boatsData.boatsDataDictionary.items():
-        #    for _, cruise_data in boat_data.cruisesDataDictionary.items():
-        #        cruise_data.concatenateDataList() # converts storage from list of DF to big df (save cost)
 
         tok = time.perf_counter()
         print(f"Imported data from {count} files in {tok - tik:0.4f} seconds")
@@ -85,38 +76,3 @@ class App:
         cruise_id, cruise_data = random.choice(list(boat_data.cruisesDataDictionary.items()))
 
         return cruise_data
-
-
-
-##### TESTING #####
-
-# data_folder = r'/Users/Graham/cruise/ais_data'
-# test_folder = r'/Users/Graham/cruise/small_ais_data'
-
-# isTest = False
-
-# a = App(test_folder) if isTest else App(data_folder)
-# b = None
-
-# sum_of_points = 0
-# for boat_name, boat_data in a.boatsData.boatsDataDictionary.items():
-#     print(f"Boat: {boat_name}")
-#     for cruise_id, cruise_data in boat_data.cruisesDataDictionary.items():
-#         print(f"  Cruise ID: {cruise_id}")
-#         print(f"    {min(cruise_data.days).strftime('%Y/%m/%d')} - {max(cruise_data.days).strftime('%Y/%m/%d')}")
-#         print(f"       data points: {len(cruise_data.data)}")
-#         sum_of_points += len(cruise_data.data)
-
-# print(f'Expected point count: {a.rowsParsedCount}, actual point count: {sum_of_points}, nan point count: {len(a.boatsData.nanData)}, condition is: {sum_of_points+len(a.boatsData.nanData) == a.rowsParsedCount}')
-
-
-
-
-
-# b.dataToGeodata()
-# b.assignPorts()
-# b.plotCruiseRoute()
-# c = b.fillPointsWithinGlacierBay()
-# test = b.getNextPort(c)
-# print(test)
-# b.initializeItinerary()

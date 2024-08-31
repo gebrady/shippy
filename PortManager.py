@@ -155,8 +155,6 @@ class PortManager():
 
 ############ SCRATCH AREA ################
 
-
-
     def getFirstIndexInPort(self, portName):
         """Returns the index of the first occurrence of being in a port."""
         filtered_gdf = self.geoprocessor.gdf[self.geoprocessor.gdf.port == portName]
