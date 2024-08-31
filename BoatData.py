@@ -1,5 +1,4 @@
 from AIS import AIS
-from CruiseSorter import CruiseSorter
 from Geoprocessor import Geoprocessor
 from Slicer import Slicer
 import pandas as pd
@@ -8,11 +7,12 @@ import os
 import secrets
 import time
 import matplotlib.pyplot as plt
+
+from typing import Dict
+from Cruise import Cruise
 from datetime import datetime
 from PathCalculations import PathCalculations
 import pytz
-
-
 
 class BoatData(AIS):
     GLBA_BOUNDARY = gpd.read_file(r'./data/shapes/port_GLBA.shp')
@@ -23,7 +23,7 @@ class BoatData(AIS):
         self.cruisesDataDictionary = {}  # Dictionary to store Cruise instances
         self.boatName = boatName  # Store boat name
 
-        self.sorter = CruiseSorter(self)
+        self._previousCruise = None # Reference to the last Cruise edited
 
     def __str__(self):
         string = ''
@@ -31,13 +31,18 @@ class BoatData(AIS):
             string = string + str(key) + ": " + str(value) + '\n'
         return string
     
-    #### IMPORTING DATA ####
+    #### READING DATA ####
 
-    def processGroup(self, group):
-        group = Slicer.orderGroupByTime(group) # convert group contents to AKDT and order as timestamps type
-        self.sorter.sort_group(group)
-
-    def aggregateGeodata(self):
+    def flattenedCruises(self) -> gpd.GeoDataFrame:
+        """returns a summary of all the data together for the season.
+        """
+        df = gpd.GeoDataFrame()
+        for cruise_id, cruise_data in self.cruisesDataDictionary.items():
+            df = pd.concat([df, cruise_data.data], ignore_index=True)
+        #print('here is the flattened set of cruises')
+        return df
+    
+    def aggregateGeodata(self): # not called
         """returns a flattened GeoDataFrame of all Cruise geodata from this boatData's cruiseDataDict
         """
         all_gdf = [cruise.gdf for _, cruise in self.cruisesDataDictionary.items() if cruise.gdf is not None]
@@ -45,144 +50,47 @@ class BoatData(AIS):
 
     def isEmpty(self):
         return not self.cruisesDataDictionary
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    ##################
-    ## Sorting Data ##
-
-    def matchesLastCruise(self, group):
-        if self.cruiseID is None:
-            return False
-        time_diff = self.cruisesDataDictionary[self.previousCruiseID].data.bs_ts.max() - group.bs_ts.min()
-        time_diff_hours = time_diff.total_seconds()/3600
-        return self.previousBoatName == self.boatName and abs(time_diff_hours) <= 1.5 # basic Logic for new to sort all cruises to same based on boat Name
     
-    def sortToCruise(self, group):
-        #group_date = group['bs_ts'][0].date()
-        for cruiseID, cruiseData in self.cruisesDataDictionary.items():
-            time_diff = cruiseData.data.bs_ts.max() - group.bs_ts.min()
-            time_diff_hours = time_diff.total_seconds()/3600
-            if abs(time_diff_hours) <= 1.5: # update this when needed for additional sorting
-                self.cruiseID = cruiseID
-                self.cruisesDataDictionary[self.cruiseID].addGroup(group)
-                print('found matching boatName and added group')
-                break
-        else: # no matches found in the cruiseDataDict, need to increment and add to that cruiseID
-            print(f'new cruise identified for {self.boatName}')
-            self.incrementCruisesDataDictionary()
-            self.cruisesDataDictionary[self.cruiseID].addGroup(group)
-            print(f'incremented and added a cruise at {self.cruiseID}')
+    #### IMPORTING DATA ####
 
+    def processGroup(self, group):
+        group = Slicer.orderGroupByTime(group) # convert group contents to AKDT and order as timestamps type
+        self._sortAndAddGroupToDictionary(group)
 
-    ####### HELPER FUNCTIONS #######
+    #### SORTING DATA HELPERS (These helper functions mutate the cruisesDataDictionary) ####
 
-    def initializeCruisesDataDictionary(self): # deprecated
-        """Assigns first cruiseID using boat name, creates an empty cruisesDataDictionary.
+    def _sortAndAddGroupToDictionary(self, group: pd.DataFrame) -> None: 
         """
-        self.cruiseID = self.boatName + '_01'
-        self.cruisesDataDictionary[self.cruiseID] = Cruise(self.cruiseID)
- 
-    def incrementCruisesDataDictionary(self):
-        """creates a new entry in cruisesDataDictionary with an incremented cruiseID, updates instance variables.
+        Sort new data into existing cruises or create new cruises as needed.
+        Args:
+            group (new_data) (pd.DataFrame): DataFrame containing the new data to be sorted.
         """
-        self.cruiseID = self.boatName + f'_{len(self.cruisesDataDictionary) + 1:02d}'
-        self.cruisesDataDictionary[self.cruiseID] = Cruise(self.cruiseID)
-   
-   ######## DEPRECATED ##########
+        # IF THIS GROUP MATCHES PREVIOUS CRUISE WE WORKED WITH
+        if self._previousCruise and self._previousCruise.shouldGroupBeAdded(group):
+            self._addGroupToCruise(self._previousCruise, group)
+            #print(f'matched to previous')
+            return
+        
+        # ITERATE TO FIND THE MATCH THEN ADD
+        for cruise_id, cruise in self.cruisesDataDictionary.items():
+            if cruise.shouldGroupBeAdded(group):
+                self._addGroupToCruise(cruise, group)
+                print(f'searched and found matching cruise {cruise_id}')
+                return
+        
+        # DEFAULT TO CREATING AND POPULATING AN EMPTY CRUISE
+        newCruise = self._incrementCruisesDataDictionary()
+        self._addGroupToCruise(newCruise, group)
+        print(f'created new cruise for this: {newCruise.cruiseID}')
+        return
 
-    def sortAndAddGroup(self, group): ##### DEPRECATED?
-        """Adds data to the initial cruise if this is a new entry
-           sorts the data to a cruise using timestamps, adds after identifying
-           increments into a new cruise for an existing boats and adds.
-        """
-        group_date = group['bs_ts'][0].date()
-        if len(self.cruisesDataDictionary) == 1:
-            self.cruisesDataDictionary[self.cruiseID].addGroup(group)
-        elif len(self.cruisesDataDictionary) > 1:
-            for cruiseID, cruiseData in self.cruisesDataDictionary.items():
-                if any((cruiseData['bs_ts'].dt.date == group_date) or (cruiseData['bs_ts'].dt.date + BoatData.TIME_THRESHOLD == group_date)):
-                    self.cruiseID = cruiseID
-                    self.cruisesDataDictionary[self.cruiseID].addGroup(group)
-                    #print(f'adding new entries to cruise: {self.cruiseID}')
-                    break
-                else: # new cruise found for this boat
-                    print(f'new cruise found for {self.boatName}')
-                    self.incrementCruisesDataDictionary(group)
-                    self.cruisesDataDictionary[self.cruiseID].addGroup(group)
-        else:
-            print('error in sortAndAddGroup')
+    def _incrementCruisesDataDictionary(self) -> Cruise:
+        """Creates a new entry in cruisesDataDictionary with an incremented cruiseID and returns a reference to the new instance."""
+        next_cruise_number = len(self.cruisesDataDictionary) + 1
+        cruise_id = f"{self.boatName}_{next_cruise_number:02d}"
+        self.cruisesDataDictionary[cruise_id] = Cruise(cruise_id)
+        return self.cruisesDataDictionary[cruise_id]
 
-    def sortAndAddGroup2(self, group): ##### DEPRECATED?
-        """Adds data to the initial cruise if this is a new entry
-           sorts the data to a cruise using timestamps, adds after identifying
-           increments into a new cruise for an existing boats and adds.
-        """
-        group_date = group['bs_ts'][0].date()
-        if len(self.cruisesDataDictionary) == 1:
-            self.cruisesDataDictionary[self.cruiseID].addGroup(group)
-        elif len(self.cruisesDataDictionary) > 1:
-            for cruiseID, cruiseData in self.cruisesDataDictionary.items():
-                if any((cruiseData['bs_ts'].dt.date == group_date) or (cruiseData['bs_ts'].dt.date + BoatData.TIME_THRESHOLD == group_date)):
-                    self.cruiseID = cruiseID
-                    self.cruisesDataDictionary[self.cruiseID].addGroup(group)
-                    #print(f'adding new entries to cruise: {self.cruiseID}')
-                    break
-                else: # new cruise found for this boat
-                    print(f'new cruise found for {self.boatName}')
-                    self.incrementCruisesDataDictionary(group)
-                    self.cruisesDataDictionary[self.cruiseID].addGroup(group)
-        else:
-            print('error in sortAndAddGroup')
-
-    def inPreviousCruiseRange(self, group_date):
-        """checks if date of current group meets threshold to belong to previous edited cruise.
-        """
-        (group_date - BoatData.TIME_THRESHOLD) in self.cruisesDataDictionary[self.previousCruiseID].days
-    
-    def groupMatchesLastCruise(self, group):
-        """Returns true if current group data belongs to the last processed group. False otherwise.
-        """
-        group_date = group['bs_ts'][0].date()
-        return self.boatName == self.previousBoatName and (group_date - BoatData.TIME_THRESHOLD) in self.cruisesDataDictionary[self.previousCruiseID].days
-
-    def newBoatEncountered(self, group):
-        """Checks if new boat name from previous group, initializes cruisesDataDictionary at
-           new cruiseID if None, and returns False for error
-        """
-        if self.boatName != self.previousBoatName:
-            if not self.cruisesDataDictionary: #if empty
-                #print('No Cruise Object, making instance for:', self.boatName)
-                self.initializeCruisesDataDictionary()
-            return True
-        else: return False
-
-    ##### MANAGEMENT METHODS #####
-
-    def getOtherCruises(self, cruiseName):
-        if cruiseName in self.cruisesDataDictionary:
-            return self.cruisesDataDictionary[cruiseName].getOtherCruises()
-        else:
-            return []
-
-    def getCruise(self, cruiseName):
-        if cruiseName in self.cruisesDataDictionary:
-            return self.cruisesDataDictionary[cruiseName]
-        else:
-            return None
+    def _addGroupToCruise(self, cruise, group) -> None:
+        cruise.addGroup(group)
+        self._previousCruise = cruise

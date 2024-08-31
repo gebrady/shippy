@@ -57,7 +57,7 @@ class BoatsData:
     def flatten(self):
         df = pd.DataFrame()
         for _, boat_data in self.boatsDataDictionary.items():
-            df = pd.concat([df, boat_data.sorter.flattenCruises()], ignore_index = True)
+            df = pd.concat([df, boat_data.flattenedCruises()], ignore_index = True)
         return df
 
     def run_glba_workflow(self):
@@ -68,7 +68,7 @@ class BoatsData:
         filtered_data = []
         for boatName, boatData in self.boatsDataDictionary.items():
             print(f'processing {boatName}')
-            data = boatData.sorter.flattenCruises()
+            data = boatData.flattenedCruises()
 
             data = PortManager.populate_status_and_ports(data)
             data = PortManager.identify_status_changes(data)
