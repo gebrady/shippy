@@ -15,7 +15,7 @@ docks = gpd.GeoDataFrame({'geometry': points}, crs = "EPSG:4326")
 
 docks['name'] = names
 
-docks.to_file(r'./shapes/dock_points_wgs84.shp', driver='ESRI Shapefile')
+docks.to_file(r'./data/shapes/dock_points_wgs84.shp', driver='ESRI Shapefile')
 
 # Reproject to Alaska Albers (EPSG:3338)
 gdf_projected = docks.to_crs(epsg=3338)

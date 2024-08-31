@@ -6,8 +6,8 @@ import rasterio
 from rasterio.features import rasterize
 from rasterio.transform import from_origin
 
-#cruises_shp_filepath = r'./cruises_shp/ais_in_glba.shp'
-cruises_shp_filepath = r'./cruises_shp/processed_cruises.shp'
+#cruises_shp_filepath = r'./data/cruises_shp/ais_in_glba.shp'
+cruises_shp_filepath = r'./data/cruises_shp/processed_cruises.shp'
 
 # Load the data
 gdf = gpd.read_file(cruises_shp_filepath)
@@ -44,7 +44,7 @@ average_grid = np.divide(sum_grid, count_grid, out=np.zeros_like(sum_grid), wher
 transform = from_origin(xmin, ymin, cell_size, -cell_size)
 
 # Write the average values to a new raster file
-output_raster = './cruise_rasters/mean_sog_raster_250m.tif'
+output_raster = './out/cruise_rasters/mean_sog_raster_250m.tif'
 with rasterio.open(
     output_raster,
     'w',

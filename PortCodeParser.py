@@ -34,8 +34,8 @@ class PortCodeParser:
                     self.port_codes_dict[codes[0]] = ' '.join(codes[1:])
 
 # Usage
-pdf_path = './calendar/claa_port_codes.pdf'
-csv_path = './calendar/claa_port_codes.csv'
+pdf_path = './data/calendar/claa_port_codes.pdf'
+csv_path = './data/calendar/claa_port_codes.csv'
 
 parser = PortCodeParser(pdf_path, csv_path)
 parser.processPDF()
