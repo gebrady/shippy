@@ -213,8 +213,8 @@ class CalendarParser:
 
 
 # Usage
-folder = r'./calendar/historical_cruise_schedules'
-#folder = r'./calendar/development_data'
+folder = r'./data/calendar/historical_cruise_schedules'
+#folder = r'.data//calendar/development_data'
 
 dfs = []
 

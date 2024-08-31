@@ -41,7 +41,7 @@ class Cruise(AIS):
         'Cordova': {'name': 'Cordova Cruise Ship Dock', 'coordinates': (-145.7575, 60.5428)},
     }
 
-    DOCK_BUFFERS = gpd.read_file(r'./buffers/docks_albers_2000m_buffer.shp')
+    DOCK_BUFFERS = gpd.read_file(r'.data/buffers/docks_albers_2000m_buffer.shp')
 
     ##### CONSTRUCTORS AND REPRESENTATION #####
     

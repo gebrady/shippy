@@ -19,7 +19,7 @@ import pytz
 
 class BoatsData:
     CLAA_DATA = pd.read_csv('./calendar/allyears_allports_claa.csv')
-    ALASKA_COASTLINE = gpd.read_file(r'./shapes/Alaska_Coastline/Alaska_Coastline.shp')
+    ALASKA_COASTLINE = gpd.read_file(r'./data/shapes/Alaska_Coastline/Alaska_Coastline.shp')
     ALASKA_COASTLINE_ALBERS = ALASKA_COASTLINE.to_crs(epsg=3338)
     ALASKA_COASTLINE_WGS84 = ALASKA_COASTLINE.to_crs(epsg=4326)
 

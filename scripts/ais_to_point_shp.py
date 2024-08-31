@@ -1,6 +1,6 @@
 a = App(r'./ais_data')
 
-cruises_shp_filepath = r'./cruises_shp/processed_cruises.shp'
+cruises_shp_filepath = r'./data/cruises_shp/processed_cruises.shp'
 
 # After data install, iterate through all data, subselect cruises that visit GLBA, write as features to shapefile
 count_total = 0

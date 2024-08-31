@@ -4,9 +4,9 @@ import numpy as np
 
 
 class PortManager():
-    GLBA_BOUNDARY = gpd.read_file(r'./shapes/port_GLBA.shp')
+    GLBA_BOUNDARY = gpd.read_file(r'./data/shapes/port_GLBA.shp')
     GLBA_BOUNDARY = GLBA_BOUNDARY.set_crs(epsg=4326)
-    DOCK_BUFFERS = gpd.read_file(r'./buffers/docks_albers_2000m_buffer.shp')
+    DOCK_BUFFERS = gpd.read_file(r'./data/buffers/docks_albers_2000m_buffer.dbf')
     #DOCK_BUFFERS = DOCK_BUFFERS.set_crs(epsg=4326)
     
     def __init__(self, geoprocessor):

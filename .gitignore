@@ -122,12 +122,9 @@ venv.bak/
 .vscode/
 
 # Custom
-/ignored_data
-/cruises_shp
-/buffers
-/cruiseGeodata
-/clipped_cruises
-
+/data/ignored_data/
+/notes/
+/out/
 
 # macOS
 .DS_Store

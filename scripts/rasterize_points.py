@@ -6,8 +6,8 @@ import rasterio
 from rasterio.features import rasterize
 from rasterio.transform import from_origin
 
-#cruises_shp_filepath = r'./cruises_shp/ais_in_glba.shp'
-cruises_shp_filepath = r'./cruises_shp/processed_cruises.shp'
+#cruises_shp_filepath = r'./data/cruises_shp/ais_in_glba.shp'
+cruises_shp_filepath = r'./data/cruises_shp/processed_cruises.shp'
 
 # Load the data
 gdf = gpd.read_file(cruises_shp_filepath)
