@@ -56,10 +56,13 @@ class PortManager():
 
         df['status_change'] = df['status'] != df['status'].shift(1) # create temp field bool for if current row diff status than prev
         df['segment_id'] = df['status_change'].cumsum()
+        df['segment_number'] = df['status_change'].cumsum()
+        boatName = df['name'].mode()[0]
+        df['segment_id'] = df.apply(lambda row: f"{boatName}_{row['segment_number']}", axis=1)
+        df.drop(columns=['status_change', 'segment_number'], inplace=True)
 
-        df.drop(columns=['status_change'], inplace = True)
         return df
-
+    
     #updates cruise.data
     @staticmethod #???????
     def assignPorts(cruise):

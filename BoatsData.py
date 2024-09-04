@@ -161,7 +161,7 @@ class BoatsData:
         # Dataframe will have 258 rows of data 
         # corresponding to each ship visit to the park. 
         
-        return visit_table.sort_values(by='ts_in').reset_index(), ais_data_glba_to_next_port, visit_count_table, popular_next_ports_table, merged, count_glba_visits
+        return visit_table.sort_values(by='ts_in').reset_index(), ais_data_glba_to_next_port, merged, count_glba_visits
 
     def import_claa_data(self):
         claa_df = pd.read_csv(BoatsData.CLAA_DATA_FILEPATH)
