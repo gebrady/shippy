@@ -81,13 +81,13 @@ class BoatsData:
                 start_index, end_index = group.index[0], group.index[-1] # index of last point in GLBA boundary -> specify 'exit line'
                 ts_in, ts_out = min(group.bs_ts), max(group.bs_ts)
 
-                mmsi = group['mmsi'].unique()[0]
+                mmsi = int(group['mmsi'].unique()[0])
+                imo = int(group['imo'].unique()[0])
 
                 start_index_next_port = data[data['segment_id'] == segment_id].index[-1] + 1
                 end_index_previous_port = data[data['segment_id'] == segment_id].index[0] - 1
                 #PortManager.getFirstIndexInNextPort(data, end_index)
                 #end_index_previous_port = PortManager.getLastIndexInPrevPort(data, start_index)
-
 
                 ###### CALCULATE STATISTICS FROM GLBA EXIT -> NEXT PORT #######
 
@@ -121,6 +121,7 @@ class BoatsData:
                         'date' : list(set(group.bs_ts.dt.date)),
                         'boatName': boatName,
                         'mmsi' : str(mmsi),
+                        'imo' : str(imo),
                         'portAfter': str(portAfter),
                         'portBefore': str(portBefore),
                         'ts_in': ts_in,
