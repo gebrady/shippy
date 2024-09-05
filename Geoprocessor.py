@@ -54,8 +54,8 @@ class Geoprocessor():
                 if inc > 0:
                     key = 'inc_' + str(inc) # if positive, "increase by 15 minutes"
                 elif inc < 0:
-                    key = 'dec_' + str(inc[1:]) #else "decrease by 15" and remove negative symbol
-                key = group_id.replace(' ','') + '_' + key
+                    key = 'dec_' + str(abs(inc)) #else "decrease by 15" and remove negative symbol
+                key = group_id.replace(' ','_') + '_' + key
                 alts[key] = Geoprocessor.reapportion_timestamps_sogs(group, inc)
 
         return alts
@@ -72,7 +72,7 @@ class Geoprocessor():
         adj['sog_new'] = adj['sog'] / ratio
         adj['bs_ts_new'] = adj['bs_ts'].iloc[0] + pd.to_timedelta(adj['delta_t_new'].cumsum().fillna(0), unit='m')
 
-        return adj            
+        return adj
     
     ######## CLIPPING #######
     def clip(self, boundary, within = True):
@@ -163,11 +163,11 @@ class Geoprocessor():
         new_row = {}
         rows = []
         for boatName, boatData in BoatsData.boatsDataDictionary.items():
-            print(boatData)
-            for cruise_id, cruise_data in boatData.cruisesDataDictionary().items():
-                print(cruise_data)
+            #print(boatData)
+            for cruise_id, cruise_data in boatData.cruisesDataDictionary.items():
+                #print(cruise_data)
                 line = LineString(cruise_data.data.geometry.values)
-                print(line)
+                #print(line)
                 new_row = {
                     'boatName': boatName,
                     'cruiseID': cruise_id,

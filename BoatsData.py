@@ -64,17 +64,20 @@ class BoatsData:
         count_glba_visits = 0
         visit_table = pd.DataFrame()
         ais_data_glba_to_next_port = gpd.GeoDataFrame()
+        ais_data_within_glba = gpd.GeoDataFrame()
         new_rows = []
         filtered_data = []
+        within_glba_data = []
         for boatName, boatData in self.boatsDataDictionary.items():
             print(f'processing {boatName}')
             data = boatData.flattenedCruises()
+            data = data.sort_values(by='bs_ts')
 
             data = PortManager.populate_status_and_ports(data)
             data = PortManager.identify_status_changes(data)
 
             within_glba = Geoprocessor.clip2(data, Geoprocessor.GLBA_BOUNDARY) # change this to be based on condition set during original check.
-            
+            within_glba_data.append(Geoprocessor.dataToGeodata(within_glba))
             grouped = within_glba.groupby('segment_id')
             for segment_id, group in grouped: # create summary row for each segment of points within GLBA
                 ### enumerate segments to calculate metrics ###
@@ -85,6 +88,7 @@ class BoatsData:
                 imo = int(group['imo'].unique()[0])
 
                 start_index_next_port = data[data['segment_id'] == segment_id].index[-1] + 1
+                first_ts_in_next_port = data.bs_ts.iloc[start_index_next_port]
                 end_index_previous_port = data[data['segment_id'] == segment_id].index[0] - 1
                 #PortManager.getFirstIndexInNextPort(data, end_index)
                 #end_index_previous_port = PortManager.getLastIndexInPrevPort(data, start_index)
@@ -128,6 +132,7 @@ class BoatsData:
                         'ts_out': ts_out,
                         'timeTo' : timelapse_to_next_port,
                         'distTo' : distance_to_next_port,
+                        'first_ts_in_next_port' : first_ts_in_next_port,
                         'mean_sog' : mean_sog,
                         'max_sog' : max_speed,
                         #'calc_kts' : distance_to_next_port/timelapse_to_next_port
@@ -149,6 +154,12 @@ class BoatsData:
             )
             #ais_data_glba_to_next_port = pd.concat([ais_data_glba_to_next_port, gpd.GeoDataFrame(filtered_data)])
 
+        if len(within_glba_data) > 0:
+            ais_data_within_glba = pd.concat(
+                [gpd.GeoDataFrame(df, geometry = 'geometry', crs = "EPSG:4326") for df in within_glba_data],
+                ignore_index=True
+            )
+
         merged = BoatsData.merge_ais_claa_data(visit_table, BoatsData.CLAA_DATA)
         
         visit_count_table = visit_table.boatName.value_counts()
@@ -161,7 +172,7 @@ class BoatsData:
         # Dataframe will have 258 rows of data 
         # corresponding to each ship visit to the park. 
         
-        return visit_table.sort_values(by='ts_in').reset_index(), ais_data_glba_to_next_port, merged, count_glba_visits
+        return visit_table.sort_values(by='ts_in').reset_index(), ais_data_glba_to_next_port, ais_data_within_glba, merged#, count_glba_visits
 
     def import_claa_data(self):
         claa_df = pd.read_csv(BoatsData.CLAA_DATA_FILEPATH)
