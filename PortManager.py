@@ -56,10 +56,13 @@ class PortManager():
 
         df['status_change'] = df['status'] != df['status'].shift(1) # create temp field bool for if current row diff status than prev
         df['segment_id'] = df['status_change'].cumsum()
+        df['segment_number'] = df['status_change'].cumsum()
+        boatName = df['name'].mode()[0].replace(' ', '_')
+        df['segment_id'] = df.apply(lambda row: f"{boatName}_{row['segment_number']}", axis=1)
+        df.drop(columns=['status_change', 'segment_number'], inplace=True)
 
-        df.drop(columns=['status_change'], inplace = True)
         return df
-
+    
     #updates cruise.data
     @staticmethod #???????
     def assignPorts(cruise):
@@ -85,18 +88,33 @@ class PortManager():
         
         # Iterate over all ports in the search area, check if any points intersect and are at rest/moored
         for _, buffer in search_area.iterrows():
-            intersecting_points1 = cruise.data[cruise.data.geometry.intersects(buffer.geometry)]
-            intersecting_points2 = cruise.data[(cruise.data.sog == 0) | (cruise.data.nav_status == 'Moored')]
-            intersecting_indices = intersecting_points1.index.intersection(intersecting_points2.index)
+            if buffer['name'] not in ['Endicott Arm', 'Tracy Arm', 
+                                      'College Fjord', 'Hubbard Glacier', 
+                                      'Glacier Bay', 'Misty Fjords']:
+                intersecting_points1 = cruise.data[cruise.data.geometry.intersects(buffer.geometry)]
+                intersecting_points2 = cruise.data[(cruise.data.sog == 0) | (cruise.data.nav_status == 'Moored')]
+                intersecting_indices = intersecting_points1.index.intersection(intersecting_points2.index)
 
-            if len(intersecting_indices) > 0:
-                cruise.data.loc[intersecting_indices, 'port'] = buffer['name']
-                cruise.data.loc[intersecting_indices, 'status'] = 'inPort'
-                #print('populating column for', buffer['name'])
-                #print(f'There were {len(intersecting_points1)} points within the geofence and  {len(intersecting_points2)} moored or at rest, populating {len(intersecting_indices)} entries in the column')
+                if len(intersecting_indices) > 0:
+                    cruise.data.loc[intersecting_indices, 'port'] = buffer['name']
+                    cruise.data.loc[intersecting_indices, 'status'] = 'inPort'
+                    #print('populating column for', buffer['name'])
+                    #print(f'There were {len(intersecting_points1)} points within the geofence and  {len(intersecting_points2)} moored or at rest, populating {len(intersecting_indices)} entries in the column')
+                else:
+                    pass
+                    #print('no entries for', buffer['name'])
             else:
-                pass
-                #print('no entries for', buffer['name'])
+                intersecting_points = cruise.data[cruise.data.geometry.intersects(buffer.geometry)]
+                intersecting_indices = intersecting_points.index()
+                if len(intersecting_indices) > 0:
+                    cruise.data.loc[intersecting_indices, 'port'] = buffer['name']
+                    cruise.data.loc[intersecting_indices, 'status'] = 'inPort'
+                    #print('populating column for', buffer['name'])
+                    #print(f'There were {len(intersecting_points1)} points within the geofence and  {len(intersecting_points2)} moored or at rest, populating {len(intersecting_indices)} entries in the column')
+                else:
+                    pass
+                    #print('no entries for', buffer['name'])
+
 
         # Create a new column with backward filled values
         cruise.data['filled_port'] = cruise.data['port'].fillna(method='bfill')

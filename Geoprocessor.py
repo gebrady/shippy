@@ -33,6 +33,46 @@ class Geoprocessor():
         else:
             print('error') 
             return gpd.GeoDataFrame(data, geometry=None)
+        
+    ######## ASSESSING MANAGEMENT ALTERNATIVES ########
+
+    @staticmethod
+    def generate_management_alternatives(data, group_field, list_of_adjustments):
+        """takes the `data` table of a cruise and returns a GeoDataFrame with new fields containing
+           calculated sog's and bs_ts's given the scenarios in `list_of_adjustments`, a list of 
+           management alternatives in integer format and minutes units. 
+           For example: Geoprocessor.reapportionTimes(data, [-30, -15, 15, 30]) would add 8 columns
+           to the return data, bs_ts and sog appended with either dec30, dec15, inc15, inc30 as a siffix
+           for the scenarios given: an increased 30 minutes for the trip from start of data to end of data
+
+           Read on the math in the jupyter notebooks...
+        """
+
+        alts = {}
+        for group_id, group in data.groupby(group_field):
+            for inc in list_of_adjustments:
+                if inc > 0:
+                    key = 'inc_' + str(inc) # if positive, "increase by 15 minutes"
+                elif inc < 0:
+                    key = 'dec_' + str(abs(inc)) #else "decrease by 15" and remove negative symbol
+                key = group_id.replace(' ','_') + '_' + key
+                alts[key] = Geoprocessor.reapportion_timestamps_sogs(group, inc)
+
+        return alts
+
+    @staticmethod
+    def reapportion_timestamps_sogs(data, increment):
+        """helper function to add field for the increment (integer in minutes)"""
+        adj = data.sort_values(by='bs_ts').reset_index(drop=True)
+        adj['delta_t'] = adj['bs_ts'].diff().dt.total_seconds() / 60 # get timedelta in minutes
+        T = adj['delta_t'].sum() # T_original = (adj.bs_ts.iloc[-1] - adj.bs_ts.iloc[0]) assert this is correct
+        ratio = (T + increment) / T # increment in minutes
+
+        adj['delta_t_new'] = adj['delta_t'] * ratio
+        adj['sog_new'] = adj['sog'] / ratio
+        adj['bs_ts_new'] = adj['bs_ts'].iloc[0] + pd.to_timedelta(adj['delta_t_new'].cumsum().fillna(0), unit='m')
+
+        return adj
     
     ######## CLIPPING #######
     def clip(self, boundary, within = True):
@@ -117,6 +157,35 @@ class Geoprocessor():
         line_gdf = gpd.GeoDataFrame([new_row], geometry=[line], crs=cruise.data.crs)
         line_gdf.set_crs(epsg=4326, inplace=True)
         line_gdf.to_file(os.path.join(os.getcwd(), filepath), driver='ESRI Shapefile')
+
+    @staticmethod
+    def boatsDataToLinesShapefile(BoatsData, filepath):
+        new_row = {}
+        rows = []
+        for boatName, boatData in BoatsData.boatsDataDictionary.items():
+            #print(boatData)
+            for cruise_id, cruise_data in boatData.cruisesDataDictionary.items():
+                #print(cruise_data)
+                line = LineString(cruise_data.data.geometry.values)
+                #print(line)
+                new_row = {
+                    'boatName': boatName,
+                    'cruiseID': cruise_id,
+                    'startDate': str(min(cruise_data.days)),
+                    'endDate': str(max(cruise_data.days)),
+                    'geometry': line
+                    #'distance' : distance,
+                    #'time' : time
+                }
+                rows.append(new_row)
+
+        line_gdf = gpd.GeoDataFrame(rows, geometry = 'geometry', crs=cruise_data.data.crs)
+        line_gdf.to_file(os.path.join(os.getcwd(), filepath), driver='ESRI Shapefile')
+
+
+
+
+
 
 
     ######## FLATTENING DATA #######
