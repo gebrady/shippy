@@ -29,8 +29,17 @@ class PortManager():
         # Iterate over all ports in the search area, check if any points intersect and are at rest/moored
         for _, buffer in search_area.iterrows():
             withinPortBoundary = df[df.geometry.intersects(buffer.geometry)]
-            mooredPoints = df[(df.sog == 0) | (df.nav_status == 'Moored')]
-            intersection = withinPortBoundary.index.intersection(mooredPoints.index)
+            intersection = withinPortBoundary.index
+
+            # # OLD APPROACH USING MOORING AND SOG CONSTRAINTS IN ADDITION TO BUFFERS
+            # if buffer['name'] not in ['Endicott Arm', 'Tracy Arm', 
+            #                           'College Fjord', 'Hubbard Glacier', 
+            #                           'Glacier Bay', 'Misty Fjords']:
+            #     mooredPoints = df[(df.sog == 0) | (df.nav_status == 'Moored')]
+            #     intersection = withinPortBoundary.index.intersection(mooredPoints.index)
+
+            # else:
+            #     intersection = withinPortBoundary.index
 
             if len(intersection) > 0: # if matches exist
                 df.loc[intersection, 'port'] = buffer['name']
@@ -40,6 +49,9 @@ class PortManager():
         df['status'].fillna('inTransit', inplace=True)
 
         port_changes = df['port'].ne(df['port'].shift())
+
+        inPortIndices = df[df['status'] == 'inPort'].index
+
         df['next_port'] = df['port'].where(port_changes).shift(-1).bfill()
 
         df['previous_port'] = df['port'].shift().where(port_changes).ffill()
@@ -58,7 +70,7 @@ class PortManager():
         df['segment_id'] = df['status_change'].cumsum()
         df['segment_number'] = df['status_change'].cumsum()
         boatName = df['name'].mode()[0].replace(' ', '_')
-        df['segment_id'] = df.apply(lambda row: f"{boatName}_{row['segment_number']}", axis=1)
+        df['segment_id'] = df.apply(lambda row: f"{boatName}_{row['segment_number']:04}", axis=1)
         df.drop(columns=['status_change', 'segment_number'], inplace=True)
 
         return df
