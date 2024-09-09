@@ -29,6 +29,9 @@ class App:
         self.populateBoatsData(dataFolder)  # Populate boatsData with data from CSV files
 
         self.visit_table, self.ais_data_glba_to_next_port, self.ais_data_within_glba, self.merged = self.boatsData.run_glba_workflow()
+        
+        self.ais_ports, self.ais_transits, self.ais_transit_table = self.boatsData.sampleRoutes()
+        
         # self.boatsData.initializeStatistics()
 
     def getAISData(self):
@@ -36,31 +39,6 @@ class App:
         ais_data.mmsi = ais_data.mmsi.astype(int).astype(str)
         ais_data.imo = ais_data.imo.astype(int).astype(str)
         return ais_data
-
-    def sampleRoutes(self):
-        """Combs through the imported boatdatas and gathers actual distances and durations between ports in the AIS data
-           Using PathCalculations, generates these lists for each boatdata and concatenates
-           returns (1) a big list and (2) summary stats for each port combo
-        """
-        new_dfs = []
-        for boatName, boatData in self.boatsData.boatsDataDictionary.items():
-            print(f'processing {boatName}')
-            _, transits = PathCalculations.get_transit_distances(boatData)
-            new_dfs.append(transits)
-        big_transits = pd.concat(new_dfs, ignore_index=True).sort_values('segment_id').reset_index()
-
-        stats_fields = ['distance_nm', 'duration_hrs']
-        stats_type = ['mean','std','count']
-        agg_dict = {field: stats_type for field in stats_fields}
-
-        stats = big_transits.groupby(['from_port', 'to_port']).agg(agg_dict).reset_index()
-
-        unique_segment_ids = big_transits.groupby(['from_port', 'to_port'])['segment_id'].apply(lambda x: list(x.unique())).reset_index(name='unique_segment_ids')
-        stats = pd.merge(stats, unique_segment_ids, on=['from_port', 'to_port'])
-
-        stats.columns = ['_'.join(col).strip() if col[1] else col[0] for col in stats.columns]
-
-        return big_transits, stats
 
     def __str__(self):
         return str(self.boatsData)  # String representation of boatsData

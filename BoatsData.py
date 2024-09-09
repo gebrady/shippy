@@ -174,6 +174,33 @@ class BoatsData:
         
         return visit_table.sort_values(by='ts_in').reset_index(), ais_data_glba_to_next_port, ais_data_within_glba, merged#, count_glba_visits
 
+    def sampleRoutes(self):
+        """Combs through the imported boatdatas and gathers actual distances and durations between ports in the AIS data
+           Using PathCalculations, generates these lists for each boatdata and concatenates
+           returns (1) a big list and (2) summary stats for each port combo
+        """
+        new_transits = []
+        new_ports = []
+        for boatName, boatData in self.boatsDataDictionary.items():
+            print(f'processing {boatName}')
+            ports, transits = PathCalculations.get_transit_distances(boatData)
+            new_transits.append(transits)
+            new_ports.append(ports)
+        big_transits = pd.concat(new_transits, ignore_index=True).sort_values('segment_id').reset_index()
+        big_ports = pd.concat(new_ports, ignore_index=True).sort_values('segment_id').reset_index()
+
+        stats_fields = ['distance_nm', 'duration_hrs']
+        stats_type = ['mean','std','count']
+        agg_dict = {field: stats_type for field in stats_fields}
+        transits_stats = big_transits.groupby(['from_port', 'to_port']).agg(agg_dict).reset_index()
+
+        unique_segment_ids = big_transits.groupby(['from_port', 'to_port'])['segment_id'].apply(lambda x: list(x.unique())).reset_index(name='unique_segment_ids')
+        transits_stats = pd.merge(transits_stats, unique_segment_ids, on=['from_port', 'to_port'])
+        transits_stats.columns = ['_'.join(col).strip() if isinstance(col, tuple) and col[1] else col[0] for col in transits_stats.columns]
+        
+        return big_ports, big_transits, transits_stats
+
+
     def import_claa_data(self):
         claa_df = pd.read_csv(BoatsData.CLAA_DATA_FILEPATH)
         claa_df['year'] = pd.to_datetime(claa_df['date']).dt.year
