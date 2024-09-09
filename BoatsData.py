@@ -197,9 +197,15 @@ class BoatsData:
         unique_segment_ids = big_transits.groupby(['from_port', 'to_port'])['segment_id'].apply(lambda x: list(x.unique())).reset_index(name='unique_segment_ids')
         transits_stats = pd.merge(transits_stats, unique_segment_ids, on=['from_port', 'to_port'])
         transits_stats.columns = ['_'.join(col).strip() if isinstance(col, tuple) and col[1] else col[0] for col in transits_stats.columns]
+        transits_stats = transits_stats.rename(columns={'f' : 'portName', 't' : 'nextPort', 'u' : 'segment_ids'})
+        transits_stats['portName'] = transits_stats['portName'].apply(lambda x: str(x).upper())
+        transits_stats['nextPort'] = transits_stats['nextPort'].apply(lambda x: str(x).upper())
         
         return big_ports, big_transits, transits_stats
 
+    def assessGlaciers(self):
+        for boatName, boatData in self.boatsDataDictionary.items():
+            pass
 
     def import_claa_data(self):
         claa_df = pd.read_csv(BoatsData.CLAA_DATA_FILEPATH)
