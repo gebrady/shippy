@@ -75,6 +75,8 @@ class BoatsData:
 
             data = PortManager.populate_status_and_ports(data)
             data = PortManager.identify_status_changes(data)
+            inPort_df = data[data.status == 'inPort'].sort_values('bs_ts')
+            #inTransit_df = data[data.status == 'inTransit']
 
             within_glba = Geoprocessor.clip2(data, Geoprocessor.GLBA_BOUNDARY) # change this to be based on condition set during original check.
             within_glba_data.append(Geoprocessor.dataToGeodata(within_glba))
@@ -87,9 +89,21 @@ class BoatsData:
                 mmsi = int(group['mmsi'].unique()[0])
                 imo = int(group['imo'].unique()[0])
 
-                start_index_next_port = data[data['segment_id'] == segment_id].index[-1] + 1
-                first_ts_in_next_port = data.bs_ts.iloc[start_index_next_port]
-                end_index_previous_port = data[data['segment_id'] == segment_id].index[0] - 1
+                try:
+                    start_index_next_port = inPort_df[inPort_df['segment_id'] > segment_id].index[0]
+                except (IndexError):
+                    start_index_next_port = end_index
+                    print(f'segment {segment_id} was the first port visited, assigning as end_index (last point in GLBA)')
+                try:
+                    first_ts_in_next_port = inPort_df.bs_ts.at[start_index_next_port]
+                except (KeyError, IndexError):  # Adjust the exception type as needed based on your error
+                    first_ts_in_next_port = None
+                try:
+                    end_index_previous_port = inPort_df[inPort_df['segment_id'] < segment_id].index[-1]
+                except (IndexError):
+                    end_index_previous_port = start_index
+                    print(f'segment {segment_id} was the first port visited, assigning as start_index (first point in GLBA)')
+                    
                 #PortManager.getFirstIndexInNextPort(data, end_index)
                 #end_index_previous_port = PortManager.getLastIndexInPrevPort(data, start_index)
 
@@ -101,8 +115,8 @@ class BoatsData:
 
                 mean_sog = Statistics.mean(sub_between_glba_next_port, 'sog')
 
-                portBefore = group['previous_port'].iloc[-1]
-                portAfter = group['next_port'].iloc[-1]
+                portBefore = data['port'].iloc[end_index_previous_port]
+                portAfter = data['port'].iloc[start_index_next_port]
 
                 max_speed = sub_between_glba_next_port['sog'].max()
 

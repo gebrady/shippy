@@ -117,6 +117,5 @@ class PathCalculations:
 
         return ports, transits
             
-            
 
 

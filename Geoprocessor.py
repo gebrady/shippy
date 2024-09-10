@@ -31,7 +31,8 @@ class Geoprocessor():
             gdf = gdf.set_geometry(geometry)
             return gdf
         else:
-            print('error') 
+            print('error: no lat/lon') 
+            print(data.columns)
             return gpd.GeoDataFrame(data, geometry=None)
         
     ######## ASSESSING MANAGEMENT ALTERNATIVES ########
