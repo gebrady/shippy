@@ -161,27 +161,25 @@ class Geoprocessor():
 
     @staticmethod
     def boatsDataToLinesShapefile(BoatsData, filepath):
-        new_row = {}
         rows = []
         for boatName, boatData in BoatsData.boatsDataDictionary.items():
-            #print(boatData)
-            for cruise_id, cruise_data in boatData.cruisesDataDictionary.items():
-                #print(cruise_data)
-                line = LineString(cruise_data.data.geometry.values)
-                #print(line)
+            data = boatData.flattenedCruises()  # Get flattened cruise data
+            if not data.empty:
+                line = LineString(data.geometry.values)
                 new_row = {
                     'boatName': boatName,
-                    'cruiseID': cruise_id,
-                    'startDate': str(min(cruise_data.days)),
-                    'endDate': str(max(cruise_data.days)),
+                    'startDate': str(min(data.bs_ts.dt.date)),  # Get min date from 'bs_ts' column
+                    'endDate': str(max(data.bs_ts.dt.date)),    # Get max date from 'bs_ts' column
                     'geometry': line
-                    #'distance' : distance,
-                    #'time' : time
                 }
                 rows.append(new_row)
 
-        line_gdf = gpd.GeoDataFrame(rows, geometry = 'geometry', crs=cruise_data.data.crs)
-        line_gdf.to_file(os.path.join(os.getcwd(), filepath), driver='ESRI Shapefile')
+        line_gdf = gpd.GeoDataFrame(rows, geometry='geometry', crs=data.crs if not data.empty else 'EPSG:4326')
+        
+        output_path = os.path.join(os.getcwd(), filepath)
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        line_gdf.to_file(output_path, driver='ESRI Shapefile')
+
 
 
 
