@@ -1,0 +1,2 @@
+bs_ts,name,mmsi,lat,lon,nav_status,cog,sog,heading,imo,callsign,destination
+2008-08-14T00:00:01,OOSTERDAM,245417000,57.043305,-135.323435,0,345,0.1,120,9221281,PBKH,KETCHIKAN

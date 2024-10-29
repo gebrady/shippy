@@ -7,8 +7,8 @@ import os
 from PathCalculations import PathCalculations
 
 class Geoprocessor():
-    GLBA_BOUNDARY = gpd.read_file(r'./data/shapes/GlacierBayGeofence.shp')
-    GLBA_BOUNDARY = GLBA_BOUNDARY.set_crs(epsg=4326)
+    GLBA_BOUNDARY = PortManager.DOCK_BUFFERS[PortManager.DOCK_BUFFERS.name == 'Glacier Bay']
+    GLBA_BOUNDARY = GLBA_BOUNDARY.to_crs(epsg=4326)
     PROJECT_EPSG = 4326
 
     def __init__(self, data):

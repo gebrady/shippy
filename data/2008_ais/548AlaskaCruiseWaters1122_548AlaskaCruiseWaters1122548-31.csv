@@ -1,0 +1,2 @@
+name,mmsi,bs_ts,lat,lon,nav_status,cog,sog,heading,imo,callsign,destination
+CORAL PRINCESS,310376000,2008-08-01T00:00:45,59.44730167,-135.32241,5,43,0,43,9229659,ZCDF4,JUNEAU

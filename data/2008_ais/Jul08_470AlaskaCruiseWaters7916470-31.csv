@@ -1,0 +1,2 @@
+bs_ts,name,mmsi,lat,lon,nav_status,cog,sog,heading,imo,callsign,destination
+2008-08-01T00:00:57,OOSTERDAM,245417000,54.68513667,-131.221435,0,203.2,21.9,203,9221281,PBKH,VICTORIA

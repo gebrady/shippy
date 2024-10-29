@@ -1,0 +1,2 @@
+bs_ts,mmsi,name,destination,lat,lon,heading,cog,sog,nav_status,imo,callsign
+2008-08-01T00:00:37,245968000,VOLENDAM,SKAGWAY,59.45096667,-135.32397,43,301.7,0.1,5,9156515,PCHM

@@ -78,7 +78,7 @@ class BoatsData:
             inPort_df = data[data.status == 'inPort'].sort_values('bs_ts')
             #inTransit_df = data[data.status == 'inTransit']
 
-            within_glba = Geoprocessor.clip2(data, Geoprocessor.GLBA_BOUNDARY) # change this to be based on condition set during original check.
+            within_glba = Geoprocessor.clip2(data, PortManager.GLBA_BOUNDARY) # change this to be based on condition set during original check.
             within_glba_data.append(Geoprocessor.dataToGeodata(within_glba))
             grouped = within_glba.groupby('segment_id')
             for segment_id, group in grouped: # create summary row for each segment of points within GLBA

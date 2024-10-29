@@ -1,0 +1,2 @@
+bs_ts,name,mmsi,lat,lon,nav_status,cog,sog,heading,imo,callsign,destination
+2008-06-25T00:00:03,AMSTERDAM,244370000,57.03849333,-135.3081633,0,14,0.1,263,9188037,PBAD,GLACIERBAY
