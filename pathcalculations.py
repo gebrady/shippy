@@ -17,7 +17,7 @@ class PathCalculations:
         for i in range(start_index, end_index):
             point1 = geometry.iloc[i]
             point2 = geometry.iloc[i + 1]
-            distances.append(geodesic((point1.y, point1.x), (point2.y, point2.x)).meters)
+            distances.append(distance((point1.y, point1.x), (point2.y, point2.x)).meters)
         return distances, round(sum(distances)/1000,2) #distance in km
     
     @staticmethod
@@ -29,7 +29,7 @@ class PathCalculations:
         for i in range(start_index, end_index):
             point1 = geometry.iloc[i]
             point2 = geometry.iloc[i + 1]
-            ds_nm = geodesic((point1.y, point1.x), (point2.y, point2.x)).meters/1852
+            ds_nm = distance((point1.y, point1.x), (point2.y, point2.x)).meters/1852
             distances.append(ds_nm)
         return distances, round(sum(distances), 2) #distance in nm (nautical miles)
 

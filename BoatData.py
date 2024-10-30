@@ -15,8 +15,8 @@ from PathCalculations import PathCalculations
 import pytz
 
 class BoatData(AIS):
-    GLBA_BOUNDARY = gpd.read_file(r'./data/shapes/port_GLBA.shp')
-    GLBA_BOUNDARY = GLBA_BOUNDARY.set_crs(epsg=4326)
+    GLBA_BOUNDARY = gpd.read_file(r'./data/shapes/glba_geofence_epsg6393.shp')
+    GLBA_BOUNDARY = GLBA_BOUNDARY.to_crs(epsg=4326)
 
     def __init__(self, boatName):
         super().__init__()

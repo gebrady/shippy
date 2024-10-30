@@ -4,7 +4,7 @@ import numpy as np
 
 
 class PortManager():
-    GLBA_BOUNDARY = gpd.read_file(r'./data/shapes/glba_geofence.shp')
+    GLBA_BOUNDARY = gpd.read_file(r'./data/shapes/glba_geofence_epsg6393.shp')
     GLBA_BOUNDARY = GLBA_BOUNDARY.to_crs(epsg=4326)
     DOCK_BUFFERS = gpd.read_file(r'./data/buffers/docks_buffered_edited_gb.dbf')
     #DOCK_BUFFERS = DOCK_BUFFERS.set_crs(epsg=4326)
